@@ -1,0 +1,916 @@
+#Extends "Modes/ShootMania/ModeBase.Script.txt"
+
+#Const	CompatibleMapTypes	"MeleeArena,RoyalArena"
+#Const	Version				"2014-08-20"
+#Const	ScriptName			"Oscillation3.Script.txt"
+
+#Include "MathLib" as MathLib
+#Include "TextLib" as TextLib
+#Include "Libs/Nadeo/Layers2.Script.txt" as Layers
+#Include "Libs/Nadeo/Message.Script.txt" as Message
+#Include "Libs/Nadeo/ShootMania/SM.Script.txt" as SM
+#Include "Libs/Nadeo/ShootMania/Score.Script.txt" as Score
+#Include "Libs/Nadeo/ShootMania/SpawnScreen.Script.txt" as SpawnScreen
+#Include "Libs/Nadeo/CustomUI.Script.txt" as CustomUI
+
+// ---------------------------------- //
+// Settings
+// ---------------------------------- //
+#Setting S_TimeLimit	600 as _("Time limit in seconds")		///< Time limit on a map
+#Setting S_PointLimit	75	as _("Points limit")	///< Points limit on a map
+#Setting S_SwitchInt	20  as _("Time in sec. to switch rules")
+#Setting S_NeutralEmblemUrl "<hidden>"		///< Url for neutral emblem
+#Setting S_NbBots		0	as _("Number of bots")
+
+// ---------------------------------- //
+// Rules
+// ---------------------------------- //
+#Const C_Rule1			_("Normal")
+#Const C_Desc1			_("Standard Deathmatch")
+
+#Const C_Rule2 			_("Bloody Hell")
+#Const C_Desc2			_("If you will die, you will lose 3 points")
+
+#Const C_Rule3 			_("POOOOOWWWWWWAAAA!!")
+#Const C_Desc3 			_("Unlimited ammo")
+
+#Const C_Rule4 			_("Don't die!")
+#Const C_Desc4 			_("If you die while this mode is active, you will not respawn until it changes")
+
+#Const C_Rule5 			_("Terminators")
+#Const C_Desc5 			_("After spawn you've got 10 armor points")
+
+#Const C_Rule6 			_("Snipers")
+#Const C_Desc6 			_("Spawn with laser")
+
+#Const C_Rule7 			_("BomberMan")
+#Const C_Desc7 			_("Spawn with nucleus")
+
+#Const C_Rule8			_("Double Points!")
+#Const C_Desc8 			_("Every hit gives 2 points")
+
+#Const C_Rule9 			_("One-Hit Wonder!")
+#Const C_Desc9 			_("All players have 1 armor")
+
+#Const C_Rule10			_("RocketMan!")
+#Const C_Desc10			_("Spawn with 10 rockets")
+
+#Const C_Rule11			_("Grenadiers!")
+#Const C_Desc11			_("Spawn with Arrow")
+
+#Const C_Rule12			_("Tired")
+#Const C_Desc12			_("Disabled stamina reload")
+
+#Const C_Rule13			_("Happy Hour !")
+#Const C_Desc13			_("Every hit gives 5 points")
+
+#Const C_Rule14			_("Strategic Play")
+#Const C_Desc14			_("Slow ammo reload")
+
+#Const Description _("TYPE: Free for all\nOBJECTIVE: Hit your opponents to score points. The first player to reach the points limit or the player with the highest score at the end of the time limit wins the map.")
+
+// ---------------------------------- //
+// Globales variables
+// ---------------------------------- //
+declare Ident[]	G_SpawnsList;		///< Id of all the landmarks with a player spawn of the map
+declare Ident	G_LatestSpawnId;	///< Id of the last landmark used
+declare Integer G_ModeTime;			///< Time remaining to change rules
+declare Integer G_ModeNextTick;
+declare Integer Mode;
+declare Integer PrevMode;
+declare Integer ModeCount;
+
+// ---------------------------------- //
+// Extend
+// ---------------------------------- //
+***LogVersion***
+***
+MB_LogVersion(ScriptName, Version);
+MB_LogVersion(SM::GetScriptName(), SM::GetScriptVersion());
+MB_LogVersion(Score::GetScriptName(), Score::GetScriptVersion());
+MB_LogVersion(Message::GetScriptName(), Message::GetScriptVersion());
+MB_LogVersion(SpawnScreen::GetScriptName(), SpawnScreen::GetScriptVersion());
+***
+
+// ---------------------------------- //
+// Set rules
+// ---------------------------------- //
+***Rules***
+***
+declare ModeName = "Oscillation 3.21";
+declare ModeObjectives = TextLib::Compose(_("Be the first who reach %1 points by eliminating the enemies. \nEvery %2 sec. game mode rules will changed."), TextLib::ToText(S_PointLimit), TextLib::ToText(S_SwitchInt));
+//declare ModeRules = TextLib::Compose(_("$<%11. $>Hit your opponents to score points.\n$<%12. $>The first player to reach the points limit or the player with the highest score at the end of the time limit wins the map."), "$"^SpawnScreen::GetModeColor());
+SpawnScreen::AddSubsection(_("Type"), _("Free for all"), 3.);
+SpawnScreen::AddSubsection(_("Objectives"), ModeObjectives, 25.);
+SpawnScreen::CreatePrettyRules(ModeName);
+ModeStatusMessage = _("TYPE: Free for all\nOBJECTIVE: Hit a maximum of players to win the game.");
+***
+
+***BackToNormal***
+***
+SetPlayerWeapon(Player, CSmMode::EWeapon::Rocket, True);
+SetPlayerAmmoMax(Player, CSmMode::EWeapon::Arrow, 2);
+Player.AmmoGain = 0.9;
+Player.StaminaMax = 0.9;
+Player.StaminaGain = 1.;
+***
+
+***BackToNormalNoWeapons***
+***
+Player.AmmoGain = 0.9;
+Player.StaminaMax = 0.9;
+Player.StaminaGain = 1.;
+Player.ArmorMax = 200;
+***
+
+***InitServer***
+***
+declare Boolean LayerAttached = False;
+declare Boolean LayerDetached = False;
+declare Boolean LayerUpdated = False;
+***
+// ---------------------------------- //
+// Server start
+// ---------------------------------- //
+***StartServer***
+***
+// ---------------------------------- //
+// Set mode options
+UseClans = False;
+
+// ---------------------------------- //
+// Neutral Emblem
+if (MB_NeutralEmblemUrl != "") {
+	NeutralEmblemUrl = MB_NeutralEmblemUrl;
+} else if (S_NeutralEmblemUrl != "") {
+	NeutralEmblemUrl = S_NeutralEmblemUrl;
+}
+
+// ---------------------------------- //
+// Create the rules
+---Rules---
+
+// ---------------------------------- //
+// Initialize UI
+SpawnScreen::CreateScores("Score.Points");
+SpawnScreen::CreateMapInfo();
+
+/*CustomUI::Load();
+CustomUI::Add("Oscillation_LiveRanking", <110., -70.>, <80., 25.>);
+CustomUI::Build();*/
+
+// ---------------------------------- //
+// Create the scores table
+ST2::SetStyle("LibST_SMBaseSolo");
+ST2::SetStyle("LibST_SMBasePoints");
+ST2::SetSize(<194., -1.>, <187., -1.>, <187., 18.>);
+ST2::SetBackgroundProperties(<0., 5.>, <237., 100.>);
+ST2::SetFormat(3, 6);
+//ST2::SetDefaultFooterScore("$sOscillation $o3.0$z$s by ToRRent");
+MB_SetScoresTableStyleFromXml(S_ScoresTableStylePath);
+ST2::Build("SM");
+***
+
+***InitMap***
+***
+declare PrevPointsLimit = -1;
+***
+
+// ---------------------------------- //
+// Map start
+// ---------------------------------- //
+***StartMap***
+***
+Users_SetNbFakeUsers(S_NbBots, 0);
+G_SpawnsList.clear();
+G_LatestSpawnId = NullId;
+Score::MatchBegin();
+Score::RoundBegin();
+foreach(Player in Players) Player.Score.Points = 0;
+
+SM::SetupDefaultVisibility();
+
+// ---------------------------------- //
+// Init bases
+foreach (Base in MapBases) {
+	Base.Clan = 0;
+	Base.IsActive = True;
+}
+
+// ---------------------------------- //
+// Init scores
+MB_Sleep(1); ///< Allow the scores array to be sorted
+foreach (Score in Scores) {
+	declare Integer LastPoint for Score;
+	LastPoint = 0;
+}
+declare LeadId = NullId;
+if (Scores.existskey(0)) LeadId = Scores[0].User.Id;
+//Layers::Create("Info");
+// ---------------------------------- //
+// New map sound
+UIManager.UIAll.SendNotice("", CUIConfig::ENoticeLevel::MatchInfo, Null, CUIConfig::EAvatarVariant::Default, CUIConfig::EUISound::StartRound, 0);
+CustomUI::Attach();
+//Layers::Update("Info", UpdateLayerInfo());
+
+StartTime = Now;
+if (S_TimeLimit > 0) EndTime = StartTime + (S_TimeLimit * 1000);
+else EndTime = -1;
+UIManager.UIAll.UISequence = CUIConfig::EUISequence::Playing;
+declare CurrentTimeLimit = S_TimeLimit;
+Mode = 1;
+PrevMode = -1;
+ModeCount = 1;
+declare Boolean ChangeMessagePos = False;
+G_ModeNextTick = Now;
+G_ModeTime = Now;
+***
+
+/****OnNewPlayer***
+***
+	Layers::Attach("Info", Player);
+***
+
+***OnNewSpectator***
+***
+	Layers::Detach("Info", Spectator);
+****/
+
+// ---------------------------------- //
+// Play loop
+// ---------------------------------- //
+***PlayLoop***
+***
+foreach (Event, PendingEvents) {
+	// ---------------------------------- //
+	// On armor empty
+	if (Event.Type == CSmModeEvent::EType::OnArmorEmpty) {
+		if (Event.Victim != Null) // victim
+		{
+			if(Mode == 2)
+			{
+				RemovePoints(Event.Victim, 3);
+			}	
+		}
+		if (Event.Shooter == Event.Victim || Event.Shooter == Null) {
+			RemovePoints(Event.Victim, 2);
+		}
+		XmlRpc::OnArmorEmpty(Event);
+		PassOn(Event);
+	} 
+	// ---------------------------------- //
+	// On hit
+	else if (Event.Type == CSmModeEvent::EType::OnHit) {
+		if (Event.Victim == Null || Event.Shooter == Event.Victim) {
+			Discard(Event);
+		} else {
+			declare Integer Points;
+			if (Mode == 8) 
+			{
+				Points = 2;
+			}
+			else if (Mode == 13)
+			{
+				Points = 5;
+			}
+			else Points = 1;
+			AddPoints(Event.Shooter, Points);
+			Event.ShooterPoints = Points;
+			
+			// ---------------------------------- //
+			// Play sound and notice if someone is close to win
+			if (Event.Shooter != Null && Event.Shooter.Score != Null) 
+			{	
+				declare LastPoint for Event.Shooter.Score = 0;
+				declare Gap = S_PointLimit - Event.Shooter.Score.Points;
+				if (Gap > 0 && Gap <= 5) 
+				{
+					declare Variant = 5 - Gap;
+					declare Msg = "";
+					if (Gap > 1) Msg = TextLib::Compose(_("$<%1$> is %2 points from victory!"), Event.Shooter.Name, TextLib::ToText(Gap));
+					else Msg = TextLib::Compose(_("$<%1$> is 1 point from victory!"), Event.Shooter.Name);
+					//Message::SendBigMessage(Msg, 3000, 2, CUIConfig::EUISound::TieBreakPoint, Variant);
+					UIManager.UIAll.SendNotice(Msg,
+						CUIConfig::ENoticeLevel::Default, Null, CUIConfig::EAvatarVariant::Default,
+						CUIConfig::EUISound::TieBreakPoint, 0);
+				} 
+				else if (Gap <= 0) 
+				{
+					Message::SendBigMessage(
+						TextLib::Compose(_("$<%1$> gets the final hit!"), Event.Shooter.Name),
+						3000, 3, CUIConfig::EUISound::VictoryPoint, 0
+					);
+				}	
+				else 
+				{
+					declare SoundGap = S_PointLimit / 10;
+					declare PlayerPoints = Event.Shooter.Score.Points;
+					if (SoundGap < 10) SoundGap = 10;
+					if (PlayerPoints / SoundGap > LastPoint) 
+					{
+						LastPoint = PlayerPoints / SoundGap;
+						declare Msg = TextLib::Compose("$666%1 : $fff%2 / %3", _("Score"), TextLib::ToText(PlayerPoints), TextLib::ToText(S_PointLimit));
+						declare Variant = ((PlayerPoints / SoundGap) - 1);
+						//Message::SendBigMessage(Event.Shooter, Msg, 3000, 0, CUIConfig::EUISound::ScoreProgress, Variant);
+						declare UI <=> UIManager.GetUI(Event.Shooter);
+						if (UI != Null) 
+						{ 
+							UI.SendNotice(Msg,
+							CUIConfig::ENoticeLevel::Default, Null, CUIConfig::EAvatarVariant::Default,
+							CUIConfig::EUISound::ScoreProgress, 0);
+						}	
+					}		
+				}
+			}	
+			XmlRpc::OnHit(Event);
+			PassOn(Event);
+		}
+	} 
+	// ---------------------------------- //
+	// On player request respawn
+	else if (Event.Type == CSmModeEvent::EType::OnPlayerRequestRespawn) {
+		if (Mode == 2) {
+			RemovePoints(Event.Player, 3);
+		} 
+		else {		
+			RemovePoints(Event.Player, 2);
+		}	
+
+		XmlRpc::OnPlayerRequestRespawn(Event);
+		PassOn(Event);
+	} 
+	// ---------------------------------- //
+	// Others
+	else {
+		PassOn(Event);
+	}
+}
+
+// ---------------------------------- //
+// Timer
+if (G_ModeNextTick <= Now) {
+	G_ModeNextTick = Now + 1000;
+	if (G_ModeTime - Now <= 5000) {
+		Message::SendBigMessage("$0f0"^((G_ModeTime+1000 - Now)/1000), 1000, 1, CUIConfig::EUISound::Notice, 2);
+		ChangeMessagePos = True;
+		if(ChangeMessagePos)
+		{
+			Message::SendStatusMessage("Prepare to change the rules!", 5000, 1);
+		}
+	} 
+}
+else
+	ChangeMessagePos = False;
+	
+if (Now >= G_ModeTime) 
+{
+	ModeCount += 1;
+	while (Mode == PrevMode) {
+		Mode = MathLib::Rand(1,14); // number of modes
+	}
+	PrevMode = Mode;
+	G_ModeNextTick = Now;
+	G_ModeTime = Now + (S_SwitchInt*1000);
+	declare Text Msg;
+	declare Text Desc;	
+	switch(Mode) // modes core
+	{
+		case 1:
+		{
+			Msg = C_Rule1;
+			Desc = C_Desc1;
+		}
+		case 2:
+		{
+			Msg = C_Rule2;
+			Desc = C_Desc2;
+		}
+		case 3:
+		{
+			Msg = C_Rule3;
+			Desc = C_Desc3;
+		}
+		case 4:
+		{
+			Msg = C_Rule4;
+			Desc = C_Desc4;
+		}
+		case 5:
+		{
+			Msg = C_Rule5;
+			Desc = C_Desc5;
+		}
+		case 6:
+		{
+			Msg = C_Rule6;
+			Desc = C_Desc6;
+		}
+		case 7:
+		{
+			Msg = C_Rule7;
+			Desc = C_Desc7;
+		}
+		case 8:
+		{
+			Msg = C_Rule8;
+			Desc = C_Desc8;
+		}
+		case 9:
+		{
+			Msg = C_Rule9;
+			Desc = C_Desc9;
+		}
+		case 10:
+		{
+			Msg = C_Rule10;
+			Desc = C_Desc10;
+		}
+		case 11:
+		{
+			Msg = C_Rule11;
+			Desc = C_Desc11;
+		}
+		case 12:
+		{
+			Msg = C_Rule12;
+			Desc = C_Desc12;
+		}
+		case 13:
+		{
+			Msg = C_Rule13;
+			Desc = C_Desc13;
+		}
+		case 14:
+		{
+			Msg = C_Rule14;
+			Desc = C_Desc14;
+		}
+	}
+	Message::CleanAllMessages();
+	Message::SendBigMessage(TextLib::Compose(_("$ff0%1"), Msg), ((S_SwitchInt*1000)-5000), 1, CUIConfig::EUISound::PhaseChange, 1);
+	Message::SendStatusMessage(Desc, ((S_SwitchInt*1000)-5000), 1);
+}	
+
+// ---------------------------------- //
+// Spawn players
+foreach (Player in Players) {
+	if (Player.SpawnStatus == CSmPlayer::ESpawnStatus::NotSpawned && !Player.RequestsSpectate) 
+	{
+		if(Mode != 4) // allowed to respawn
+		{
+			if (G_SpawnsList.count == 0) {
+				foreach (MapLandmark in MapLandmarks_PlayerSpawn) G_SpawnsList.add(MapLandmark.Id);
+			}
+	
+			declare SpawnId = NullId;
+			while (True) {
+				SpawnId = G_SpawnsList[MathLib::Rand(0, G_SpawnsList.count - 1)];
+				if (SpawnId != G_LatestSpawnId) break;
+				if (G_SpawnsList.count == 1) break;
+			}
+			G_LatestSpawnId = SpawnId;
+			if(Mode == 1)
+			{
+				---BackToNormal---
+			}
+			else if(Mode == 5)
+				Player.Armor = 1000;
+			else if(Mode == 6) SetPlayerWeapon(Player, CSmMode::EWeapon::Laser, False);
+			else if(Mode == 7) SetPlayerWeapon(Player, CSmMode::EWeapon::Nucleus, False);
+			else if(Mode == 10)
+			{
+				SetPlayerWeapon(Player, CSmMode::EWeapon::Rocket, False);
+				SetPlayerAmmoMax(Player, CSmMode::EWeapon::Rocket, 10);
+			}
+			else if(Mode == 11)
+			{
+				SetPlayerWeapon(Player, CSmMode::EWeapon::Arrow, False);
+				SetPlayerAmmoMax(Player, CSmMode::EWeapon::Arrow, 2);
+			}
+			else
+			{
+				SetPlayerWeapon(Player, CSmMode::EWeapon::Rocket, True);
+				SetPlayerAmmoMax(Player, CSmMode::EWeapon::Arrow, 2);
+			}
+			SM::SpawnPlayer(Player, 0, MapLandmarks_PlayerSpawn[SpawnId].PlayerSpawn);
+			declare Removed = G_SpawnsList.remove(SpawnId);
+		}
+	}
+	if (Mode == 1) 
+	{
+		---BackToNormalNoWeapons--- // Storm limitation
+	}	
+	else if(Mode == 3)
+		Player.AmmoGain = 8.;	
+	else if(Mode == 5)
+	{
+		if(Player.ArmorMax != 1000) Player.ArmorMax = 1000;	
+	}
+	else if(Mode == 9)
+	{
+		if(Player.Armor > 100) Player.Armor = 100;
+	}	
+	else if(Mode == 12)
+	{
+		if(Player.StaminaGain != 0.) Player.StaminaGain = 0.;	
+	}			
+	else if(Mode == 14)
+	{
+		if(Player.AmmoGain > 0.5) Player.AmmoGain = 0.5;		
+	}	
+	else
+	{	
+		---BackToNormalNoWeapons---
+	}	
+}
+
+// ---------------------------------- //
+// Play sound and notice if someone is taking the lead
+if (Scores.existskey(0) && Scores[0].User.Id != LeadId) {
+	LeadId = Scores[0].User.Id;
+	//Message::SendBigMessage(TextLib::Compose(_("$<%1$> takes the lead!"), Scores[0].User.Name), 3000, 1, CUIConfig::EUISound::PhaseChange, 1);
+	UIManager.UIAll.SendNotice(TextLib::Compose(_("$<%1$> takes the lead!"), Scores[0].User.Name),
+	CUIConfig::ENoticeLevel::Default, Null, CUIConfig::EAvatarVariant::Default,
+	CUIConfig::EUISound::PhaseChange, 1);
+}
+
+// ---------------------------------- //
+// Server info change
+if (PrevPointsLimit != S_PointLimit) {
+	PrevPointsLimit = S_PointLimit;
+	ST2::SetFooterText(TextLib::Compose("%1 "^S_PointLimit, _("Points limit : ")));
+}
+
+// ---------------------------------- //
+// Update time limit
+if (CurrentTimeLimit != S_TimeLimit) {
+	CurrentTimeLimit = S_TimeLimit;
+	if (S_TimeLimit > 0) EndTime = StartTime + (S_TimeLimit * 1000);
+	else EndTime = -1;
+}
+
+Message::Loop();
+
+// ---------------------------------- //
+// victory conditions
+declare IsMatchOver = False;
+if (S_TimeLimit > 0 && Now > EndTime) IsMatchOver = True;
+if (S_PointLimit > 0) {
+	foreach (Player in Players) {
+		if (Player.Score != Null && Player.Score.Points >= S_PointLimit) IsMatchOver = True;
+	}
+}
+
+if (IsMatchOver) MB_StopMap = True;
+***
+
+// ---------------------------------- //
+// Map end
+// ---------------------------------- //
+***EndMap***
+***
+EndTime = -1;
+Score::RoundEnd();
+Score::MatchEnd(True);
+
+// ---------------------------------- //
+// End match sequence
+declare CUser Winner <=> Null;
+declare MaxPoints = 0;
+foreach (Score in Scores) {
+	if (Score.Points > MaxPoints) {
+		MaxPoints = Score.Points;
+		Winner <=> Score.User;
+	} else if (Score.Points == MaxPoints) {
+		Winner <=> Null;
+	}
+}
+foreach (Player in Players) {
+	if (Player.User != Winner) UnspawnPlayer(Player);
+}
+//Layers::Detach("Info");
+
+MB_Sleep(1000);
+Message::CleanBigMessages();
+UIManager.UIAll.BigMessageSound = CUIConfig::EUISound::EndRound;
+UIManager.UIAll.BigMessageSoundVariant = 0;
+if (Winner != Null) {
+	UIManager.UIAll.BigMessage = TextLib::Compose(_("$<%1$> wins the match!"), Winner.Name);
+} else {
+	UIManager.UIAll.BigMessage = _("|Match|Draw");
+}
+MB_Sleep(2000);
+UIManager.UIAll.UISequence = CUIConfig::EUISequence::EndRound;
+UIManager.UIAll.ScoreTableVisibility = CUIConfig::EVisibility::ForcedVisible;
+MB_Sleep(5000);
+
+UIManager.UIAll.UISequence = CUIConfig::EUISequence::Podium;
+while(!UIManager.UIAll.UISequenceIsCompleted) {
+	MB_Yield();
+}
+
+UIManager.UIAll.ScoreTableVisibility = CUIConfig::EVisibility::Normal;
+Message::CleanAllMessages();	
+***
+
+// ---------------------------------- //
+// Server end
+// ---------------------------------- //
+***EndServer***
+***
+SpawnScreen::DestroyRules();
+SpawnScreen::DestroyScores();
+SpawnScreen::DestroyMapInfo();
+//CustomUI::Unload();
+//Layers::Destroy("Info");
+//Layers::Clean();
+***
+
+// ---------------------------------- //
+// Functions
+// ---------------------------------- //
+
+Void AddPoints(CSmPlayer _Player, Integer _Points)
+{
+	_Player.Score.Points += _Points;
+}
+
+Void RemovePoints(CSmPlayer _Player, Integer _Points)
+{
+	if(_Player.Score.Points > _Points) _Player.Score.Points -= _Points;
+	else _Player.Score.Points = 0;
+	
+	declare UI <=> UIManager.GetUI(_Player);
+	if(UI != Null) UI.SendNotice(TextLib::Compose(_("$f20Respawn Penalty: -%1"), TextLib::ToText(_Points)), CUIConfig::ENoticeLevel::Default, Null, CUIConfig::EAvatarVariant::Default, CUIConfig::EUISound::Silence, 0);
+}
+
+/*Text UpdateLayerInfo()
+{
+	declare Text ReturnText;
+	if(PlayersNbTotal < 4)
+		ReturnText = "";	
+	else
+	{	
+		ReturnText = """
+<frame class="LibCustomUI_Module" id="Oscillation_LiveRanking">
+	<frame posn="110 -75">
+	<quad posn="0 15 0" sizen="80 20" halign="center" style="EnergyBar" />
+	<label posn="-33 12" sizen="7 3" halign="right" valign="center" text="1." />
+	<label posn="-27 12" sizen="40 3" textsize="2" valign="center" text="-" id="LeaderName"/>
+	<label posn="27 12" sizen="10 3" halign="right" valign="center" style="TextTitle3" text="-" id="LeaderPoints" />
+	<label posn="35 12" sizen="8 2" halign="right" valign="center" style="TextTitle3" text="-" id="LeaderGap" />
+	
+	<label posn="-33 8" sizen="7 3" halign="right" valign="center" text="-" id="AheadPos" />
+	<label posn="-27 8" sizen="40 3" textsize="2" valign="center" text="-" id="AheadName" />
+	<label posn="27 8" sizen="10 3" halign="right" valign="center" style="TextTitle3" text="-" id="AheadPoints" />
+	<label posn="35 8" sizen="8 2" halign="right" valign="center" style="TextTitle3" text="-" id="AheadGap" />
+	
+	<label posn="-33 4" sizen="7 3" halign="right" valign="center" text="-" id="MyPos" />
+	<label posn="-27 4" sizen="40 3" textsize="2" valign="center" text="-" id="MyName" />
+	<label posn="27 4" sizen="10 3" halign="right" valign="center" style="TextTitle3" text="-" id="MyPoints" />
+	<label posn="35 4" sizen="8 2" halign="right" valign="center" style="TextTitle3" text="-" id="MyGap" />
+	
+	<label posn="-33 0" sizen="7 3" halign="right" valign="center" text="-" id="BehindPos" />
+	<label posn="-27 0" sizen="40 3" textsize="2" valign="center" text="-" id="BehindName" />
+	<label posn="27 0" sizen="10 3" halign="right" valign="center" style="TextTitle3" text="-" id="BehindPoints" />
+	<label posn="35 0" sizen="8 2" halign="right" valign="center" style="TextTitle3" text="-" id="BehindGap" />
+	</frame>
+</frame>
+<script><!--
+	#Include "TextLib" as TextLib
+	#Include "MathLib" as MathLib
+	
+	#Const C_RefreshInterval 500
+	
+	main() {
+		{{{CustomUI::InjectMLInit()}}}
+		declare Frame_LiveRank	<=> (Page.GetFirstChild("LiveRank") as CMlFrame);
+		declare Label_LeaderName <=> (Page.GetFirstChild("LeaderName") as CMlLabel);
+		declare Label_LeaderPoints <=> (Page.GetFirstChild("LeaderPoints") as CMlLabel);
+		declare Label_LeaderGap <=> (Page.GetFirstChild("LeaderGap") as CMlLabel);
+
+		declare Label_AheadPos <=> (Page.GetFirstChild("AheadPos") as CMlLabel);
+		declare Label_AheadName <=> (Page.GetFirstChild("AheadName") as CMlLabel);
+		declare Label_AheadPoints <=> (Page.GetFirstChild("AheadPoints") as CMlLabel);
+		declare Label_AheadGap <=> (Page.GetFirstChild("AheadGap") as CMlLabel);
+
+		declare Label_MyPos <=> (Page.GetFirstChild("MyPos") as CMlLabel);
+		declare Label_MyName <=> (Page.GetFirstChild("MyName") as CMlLabel);
+		declare Label_MyPoints <=> (Page.GetFirstChild("MyPoints") as CMlLabel);
+		declare Label_MyGap <=> (Page.GetFirstChild("MyGap") as CMlLabel);
+
+		declare Label_BehindPos <=> (Page.GetFirstChild("BehindPos") as CMlLabel);
+		declare Label_BehindName <=> (Page.GetFirstChild("BehindName") as CMlLabel);
+		declare Label_BehindPoints <=> (Page.GetFirstChild("BehindPoints") as CMlLabel);
+		declare Label_BehindGap <=> (Page.GetFirstChild("BehindGap") as CMlLabel);
+
+		declare LastUpdate = 0;
+		
+		while(True) 
+		{
+			yield;
+			if (LastUpdate + C_RefreshInterval > Now) continue;
+			LastUpdate = Now;	
+			
+			if(Scores.keyof(InputPlayer.Score) + 1 == 1)
+			{
+				declare P1 = Scores[0].Points;
+				declare P2 = Scores[1].Points;
+				declare P3 = Scores[2].Points;
+				
+				Label_LeaderName.SetText(InputPlayer.Name);
+				Label_LeaderPoints.SetText(TextLib::ToText(P1));
+				Label_LeaderGap.SetText("");
+
+				Label_AheadPos.SetText("2.");
+				declare AheadNameString = "";
+				AheadNameString = TextLib::Compose(_("%1"), Scores[1].User.Name);
+				Label_AheadName.SetText(AheadNameString);
+				Label_AheadPoints.SetText(TextLib::ToText(P2));
+				declare AheadGapString = "";
+				if(P1-P2 == 0)
+					AheadGapString = "";
+				else	
+					AheadGapString = TextLib::Compose(_("$0f0+%1"), TextLib::ToText(P1-P2));
+				Label_AheadGap.SetText(AheadGapString);
+
+				Label_MyPos.SetText("3.");
+				declare MyNameString = "";
+				MyNameString = TextLib::Compose(_("%1"), Scores[2].User.Name);
+				Label_MyName.SetText(MyNameString);
+				Label_MyPoints.SetText(TextLib::ToText(P3));
+				declare MyGapString = "";
+				if(P1-P3 == 0)
+					MyGapString = "";
+				else	
+					MyGapString = TextLib::Compose(_("$0f0+%1"), TextLib::ToText(P1-P3));
+				Label_MyGap.SetText(MyGapString);	
+
+				declare P4 = Scores[3].Points;
+				Label_BehindPos.SetText("4.");
+				declare BehindNameString = "";
+				BehindNameString = TextLib::Compose(_("%1"), Scores[3].User.Name);
+				Label_BehindName.SetText(BehindNameString);
+				Label_BehindPoints.SetText(TextLib::ToText(P4));
+				declare BehindGapString = "";
+				if(P1-P4 == 0)
+					BehindGapString = "";
+				else	
+					BehindGapString = TextLib::Compose(_("$0f0+%1"), TextLib::ToText(P1-P4));
+				Label_BehindGap.SetText(BehindGapString);		
+			}
+			else if(Scores.keyof(InputPlayer.Score) + 1 == 2)
+			{
+				declare P1 = Scores[0].Points;
+				declare P2 = Scores[1].Points;
+				declare P3 = Scores[2].Points;
+				
+				declare LeaderNameString = "";
+				LeaderNameString = TextLib::Compose(_("%1"), Scores[0].User.Name);
+				Label_LeaderName.SetText(LeaderNameString);
+				Label_LeaderPoints.SetText(TextLib::ToText(P1));
+				declare LeaderGapString = "";
+				if(P1-P2 == 0)
+					LeaderGapString = "";
+				else	
+					LeaderGapString = TextLib::Compose(_("$f00-%1"), TextLib::ToText(P1-P2));
+				Label_LeaderGap.SetText(LeaderGapString);
+
+				Label_AheadPos.SetText("2.");
+				Label_AheadName.SetText(InputPlayer.Name);
+				Label_AheadPoints.SetText(TextLib::ToText(P2));
+				Label_AheadGap.SetText("");
+
+				Label_MyPos.SetText("3.");
+				declare MyNameString = "";
+				MyNameString = TextLib::Compose(_("%1"), Scores[2].User.Name);
+				Label_MyName.SetText(MyNameString);
+				Label_MyPoints.SetText(TextLib::ToText(P3));
+				declare MyGapString = "";
+				if(P2-P3 == 0)
+					MyGapString = "";
+				else	
+					MyGapString = TextLib::Compose(_("$0f0+%1"), TextLib::ToText(P2-P3));
+				Label_MyGap.SetText(MyGapString);
+
+				declare P4 = Scores[3].Points;
+				Label_BehindPos.SetText("4.");
+				declare BehindNameString = "";
+				BehindNameString = TextLib::Compose(_("%1"), Scores[3].User.Name);
+				Label_BehindName.SetText(BehindNameString);
+				Label_BehindPoints.SetText(TextLib::ToText(P4));
+				declare BehindGapString = "";
+				if(P2-P4 == 0)
+					BehindGapString = "";
+				else	
+					BehindGapString = TextLib::Compose(_("$0f0+%1"), TextLib::ToText(P2-P4));
+				Label_BehindGap.SetText(BehindGapString);	
+			}
+			else if(Scores.keyof(InputPlayer.Score) + 1 > 2 && Scores.keyof(InputPlayer.Score) + 1 < Scores.count-1)
+			{
+				declare P1 = Scores[0].Points;
+				declare PosAhead = Scores.keyof(InputPlayer.Score);
+				declare PA = Scores[PosAhead].Points;
+				declare PC = Scores[Scores.keyof(InputPlayer.Score) + 1].Points;
+					
+				declare LeaderNameString = "";
+				LeaderNameString = TextLib::Compose(_("%1"), Scores[0].User.Name);
+				Label_LeaderName.SetText(LeaderNameString);
+				Label_LeaderPoints.SetText(TextLib::ToText(P1));
+				declare LeaderGapString = "";
+				if(P1-PC == 0)
+					LeaderGapString = "";
+				else	
+					LeaderGapString = TextLib::Compose(_("$f00-%1"), TextLib::ToText(P1-PC));
+				Label_LeaderGap.SetText(LeaderGapString);
+
+				Label_AheadPos.SetText(TextLib::ToText(PosAhead));
+				declare AheadNameString = "";
+				AheadNameString = TextLib::Compose(_("%1"), Scores[PosAhead].User.Name);
+				Label_AheadName.SetText(AheadNameString);
+				Label_AheadPoints.SetText(TextLib::ToText(PA));
+				declare AheadGapString = "";
+				if(PA-PC == 0)
+					AheadGapString = "";
+				else
+					AheadGapString = TextLib::Compose(_("$f00-%1"), TextLib::ToText(PA-PC));
+				Label_LeaderGap.SetText(LeaderGapString);
+
+				Label_MyPos.SetText(TextLib::ToText(Scores.keyof(InputPlayer.Score) + 1));
+				Label_MyName.SetText(InputPlayer.Name);
+				Label_MyPoints.SetText(TextLib::ToText(PC));
+				Label_MyGap.SetText("");
+
+				declare PosBehind = Scores.keyof(InputPlayer.Score) + 2;
+				declare PB = Scores[PosBehind].Points;		
+				Label_BehindPos.SetText(TextLib::ToText(PosBehind));
+				declare BehindNameString = "";
+				BehindNameString = TextLib::Compose(_("%1"), Scores[PosBehind].User.Name);
+				Label_BehindName.SetText(BehindNameString);
+				Label_BehindPoints.SetText(TextLib::ToText(PB));
+				declare BehindGapString = "";
+				if(PC-PB == 0)
+					BehindGapString = "";
+				else	
+					BehindGapString = TextLib::Compose(_("$0f0+%1"), TextLib::ToText(PC-PB));
+				Label_BehindGap.SetText(BehindGapString);
+			}
+			else
+			{
+				declare PosAhead2 = Scores.keyof(InputPlayer.Score) - 1;
+				declare PA2 = Scores[PosAhead2].Points;
+				declare P1 = Scores[0].Points;
+				declare PosBehind = Scores.keyof(InputPlayer.Score) + 2;
+				declare PosAhead = Scores.keyof(InputPlayer.Score);
+				declare PA = Scores[PosAhead].Points;
+				declare PB = Scores[PosBehind].Points;
+				declare PC = Scores[Scores.keyof(InputPlayer.Score) + 1].Points;	
+				
+				declare LeaderNameString = "";
+				LeaderNameString = TextLib::Compose(_("%1"), Scores[0].User.Name);
+				Label_LeaderName.SetText(LeaderNameString);
+				Label_LeaderPoints.SetText(TextLib::ToText(P1));
+				declare LeaderGapString = "";
+				if(P1-PC == 0)
+					LeaderGapString = "";
+				else	
+					LeaderGapString = TextLib::Compose(_("$f00-%1"), TextLib::ToText(P1-PC));
+				Label_LeaderGap.SetText(LeaderGapString);
+
+				Label_AheadPos.SetText(TextLib::ToText(PosAhead2));
+				declare AheadNameString = "";
+				AheadNameString = TextLib::Compose(_("%1"), Scores[PosAhead2].User.Name);
+				Label_AheadName.SetText(AheadNameString);
+				Label_AheadPoints.SetText(TextLib::ToText(PA2));
+				declare AheadGapString = "";
+				if(PA2-PC == 0)
+					AheadGapString = "";
+				else	
+					AheadGapString = TextLib::Compose(_("$f00-%1"), TextLib::ToText(PA2-PC));
+				Label_LeaderGap.SetText(LeaderGapString);
+
+				Label_MyPos.SetText(TextLib::ToText(PosAhead));
+				declare MyNameString = "";
+				MyNameString = TextLib::Compose(_("%1"), Scores[PosAhead].User.Name);
+				Label_MyName.SetText(MyNameString);
+				Label_MyPoints.SetText(TextLib::ToText(PA));
+				declare MyGapString = "";
+				if(PA-PC == 0)
+					MyGapString = "";
+				else	
+					MyGapString = TextLib::Compose(_("$f00-%1"), TextLib::ToText(PA-PC));
+				Label_MyGap.SetText(MyGapString);
+
+				Label_BehindPos.SetText(TextLib::ToText(Scores.keyof(InputPlayer.Score) + 1));
+				Label_BehindName.SetText(InputPlayer.Name);
+				Label_BehindPoints.SetText(TextLib::ToText(PC));
+				Label_BehindGap.SetText("");
+			}
+			{{{CustomUI::InjectMLLoop()}}}
+		}		
+	}
+--></script>	
+""";
+	}
+	return ReturnText;
+}*/
