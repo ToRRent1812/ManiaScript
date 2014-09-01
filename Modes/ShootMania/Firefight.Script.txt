@@ -1277,7 +1277,7 @@ if(G_LastProgressUpdate + 750 < Now)
 	
 	foreach(Player in Players)
 	{
-		if(Player.Armor > 0) G_PlayersAlive[Player.CurrentClan] += 1;
+		if(Player.Armor > 0 && Player.CurrentClan > 0) G_PlayersAlive[Player.CurrentClan] += 1;
 	}	
 	if(G_PlayersAlive[1] <= 0)
 	{
@@ -1723,7 +1723,7 @@ MB_Sleep(6000);
 UIManager.UIAll.UISequence = CUIConfig::EUISequence::Podium;
 MB_Sleep(6000);
 UIManager.UIAll.ScoreTableVisibility = CUIConfig::EVisibility::Normal;
-LT_VoteMap(ClanMapWinner);
+//LT_VoteMap(ClanMapWinner);
 Message::CleanAllMessages();
 ***
 
@@ -1916,6 +1916,7 @@ Void PickUpWeapon(CSmPlayer _Player, Text _Weapon)
 			ActionLoad(_Player, CSmMode::EActionSlot::Slot_A, G_CustomPlasmaGun);
 			ActionBind(_Player, CSmMode::EActionSlot::Slot_A, CSmMode::EActionInput::Weapon);
 			PrimaryWeapon = 2;
+			_Player.AmmoGain = 1.;
 		}
 		case "Grenades":
 		{
@@ -1925,6 +1926,7 @@ Void PickUpWeapon(CSmPlayer _Player, Text _Weapon)
 			ActionLoad(_Player, CSmMode::EActionSlot::Slot_A, G_CustomGrenades);
 			ActionBind(_Player, CSmMode::EActionSlot::Slot_A, CSmMode::EActionInput::Weapon);
 			PrimaryWeapon = 3;
+			_Player.AmmoGain = 0.85;
 		}
 		case "Nucleus":
 		{
@@ -1942,6 +1944,7 @@ Void PickUpWeapon(CSmPlayer _Player, Text _Weapon)
 			SetPlayerAmmoMax(_Player, CSmMode::EWeapon::Arrow, 0);
 			ActionLoad(_Player, CSmMode::EActionSlot::Slot_A, G_CustomShotgun);
 			ActionBind(_Player, CSmMode::EActionSlot::Slot_A, CSmMode::EActionInput::Weapon);
+			_Player.AmmoGain = 0.85;
 			PrimaryWeapon = 5;
 		}
 		case "BlowBomb":
@@ -1951,6 +1954,7 @@ Void PickUpWeapon(CSmPlayer _Player, Text _Weapon)
 			SetPlayerAmmoMax(_Player, CSmMode::EWeapon::Arrow, 0);
 			ActionLoad(_Player, CSmMode::EActionSlot::Slot_A, G_CustomBlowBomb);
 			ActionBind(_Player, CSmMode::EActionSlot::Slot_A, CSmMode::EActionInput::Weapon);
+			_Player.AmmoGain = 0.95;
 			PrimaryWeapon = 6;
 		}
 		default: return;
