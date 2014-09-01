@@ -19,10 +19,11 @@
 #Include "Libs/Nadeo/Shootmania/Toss.Script.txt" as Toss
 #Include "Libs/Nadeo/ShootMania/SpawnScreen.Script.txt" as SpawnScreen
 
-#Setting S_RoundTime			120		as _("Round time in seconds")
+#Setting S_RoundTime			105		as _("Round time in seconds")
 #Setting S_PoleCaptureDuration	4		as _("Hacking time in seconds")
-#Setting S_BuyTime				20		as _("Time in seconds to buy before round.")
+#Setting S_BuyTime				20		as _("Time in seconds to buy before round")
 #Setting S_MapPointsLimit		9		as _("Number of points to win the map")
+#Setting S_StartCash 			800 	as _("Starting money")
 #Setting S_BlueBot 				0 		as _("Number of blue test bots")
 #Setting S_RedBot 				0 		as _("Number of red test bots")
 //#Setting S_UseNextMapVote		True	as "<hidden>"		
@@ -37,8 +38,6 @@
 #Const C_ImgModeDir				"file://Media/Manialinks/Shootmania/Common/FireFight"
 
 #Const C_RocketsAmmo			3 // rockets
-#Const C_BRocketsAmmo			3 // bouncing rockets
-#Const C_PistolAmmo 			6 // Electric Pistol
 
 // For easier shop management
 #Const C_BoughtMoreStamina		0
@@ -54,15 +53,14 @@
 #Const C_BoughtJuggernautSuit	10
 
 								  //0,  1,   2,   3,    4,    5,    6,    7,    8,    9,  10
-#Const C_ShopPrices 			[0, 700, 600, 950, 1400, 2000, 2500, 2250, 2400, 2600, 650, 3000]
+#Const C_ShopPrices 			[0, 500, 800, 900, 1600, 1850, 2500, 2300, 2100, 2500, 750, 2000]
 
 #Const C_BasicStamina		 	0.7
 #Const C_BasicSpeed 			0.9
 
-#Const C_StartCash 				800
-#Const C_CashForHit 			15
+#Const C_CashForHit 			10
 #Const C_CashForKill 			300
-#Const C_CashForHeadshotHit 	30
+#Const C_CashForHeadshotHit 	15
 #Const C_CashForCapture 		1000
 #Const C_CashForWin 			1500
 #Const C_CashForLoss 			750
@@ -141,7 +139,7 @@ else G_RedBot = S_RedBot;
 
 declare ModeName = "Overload";
 declare ModeObjectives = TextLib::Compose(_("$<%1Access points: $>There are 3 access points, only one is vulnerable.\n$<%1Attackers: $>Find vulnerable access point and hack to win the round.\n$<%1Defenders: $>Protect vulnerable point by %2 sec. or eliminate attackers to win the round"), "$"^SpawnScreen::GetModeColor(), TextLib::ToText(S_RoundTime));
-declare ModeConditions = TextLib::Compose(_("$<%11. $>A game is divided in rounds.\n$<%12. $>The first team with %2 points wins the map.\n$<%13. $>Before round you can buy equipment using money.\n$<%14. $>You can earn money by every hit, headshot, kill, capture, win and loss."), "$"^SpawnScreen::GetModeColor(), TextLib::ToText(S_MapPointsLimit+1));
+declare ModeConditions = TextLib::Compose(_("$<%11. $>A game is divided in rounds.\n$<%12. $>The first team with %2 points wins the map.\n$<%13. $>Before round you can buy equipment using money.\n$<%14. $>You can earn money by hit, headshot, kill, capture, win and loss."), "$"^SpawnScreen::GetModeColor(), TextLib::ToText(S_MapPointsLimit+1));
 
 SpawnScreen::AddSubsection(_("Type"), _("Team versus Team"), 0.);
 SpawnScreen::AddSubsection(_("Objectives"), ModeObjectives, 20.);
@@ -152,15 +150,18 @@ SM::SetupDefaultVisibility();
 
 Sound::Load();
 Sound::Attach();
+
+// Init movable elements
 CustomUI::Load();
 CustomUI::Add("Overload_PlayersList_1", <-160., 67.>, <46., 90.>, "top", "left");
 CustomUI::Add("Overload_PlayersList_2", <160., 67.>, <46., 90.>, "top", "right");
 CustomUI::Add("Overload_GaugeCapture", <0., -45.>, <130., 20.>, "center", "center");
 CustomUI::Build();
+
 // Create layers
 Layers::Create("ProgressBar"); // Specific capture progress
 Layers::Create("Markers"); // markers layer
-Layers::Create("Players"); // players lists layer
+Layers::Create("Players"); // players lists
 Layers::Create("Shop"); // Shop 
 Layers::Create("HUD"); // Hud layer when player is spawned
 Layers::Create("RulesReminder", UpdateLayerRulesReminder());
@@ -182,7 +183,6 @@ ActionList_End();
 ST2::SetStyle("LibST_SMBaseTeams");
 ST2::SetStyle("LibST_SMBasePoints");
 ST2::SetStyle("LibST_SMWithLegends");
-//ST2::SetSize(<197., -1.>, <190., -1.>, <190., -1.>);
 ST2::SetSize(<197., -1.>, <190., -1.>, <190., -1.>);
 ST2::SetBackgroundImage("file://Media/Manialinks/Shootmania/ScoresTable/bg-storm.dds", <0., 5.>, <240., 98.>);
 ST2::SetTeamImage(1, "file://Media/Manialinks/Shootmania/ScoresTable/teamversus-left.dds", <0., 3.8>, <120.0, 25.>);
@@ -203,6 +203,137 @@ ST2::SetColWidth("LibST_SMPoints", 6.);
 ST2::Build("SM");
 ***	
 
+***SpawnWithEQ***
+***
+declare netread Net_Bought for UI = [False, False, False, False, False, False, False, False, False, False, False];
+declare netread Net_SecWpn for UI = 0;
+declare netread Net_PrimWpn for UI = 0;
+//Stamina
+if(Net_Bought[C_BoughtMoreStamina])
+{
+	Player.StaminaMax = 1.0;
+	Player.StaminaGain = 1.0;
+	Player.SpeedPower = 1.0;
+}
+else
+{
+	Player.StaminaMax = C_BasicStamina;
+	Player.StaminaGain = C_BasicStamina;
+	Player.SpeedPower = C_BasicSpeed;
+}
+// Shields
+if(Net_Bought[C_BoughtShield])
+{
+	Player.ArmorMax = 500;
+	Player.Armor = 500;
+}
+else if(Net_Bought[C_BoughtJuggernautSuit])
+{
+	Player.ArmorMax = 700;
+	Player.Armor = 700;
+}
+else
+{
+	Player.ArmorMax = 400;
+	Player.Armor = 400;
+}
+
+switch(Net_SecWpn)
+{
+	case 1:
+	{
+		if(Player != Null)
+		{
+			ActionLoad(Player, CSmMode::EActionSlot::Slot_B, G_CustomBounceRocket);
+   			ActionBind(Player, CSmMode::EActionSlot::Slot_B, CSmMode::EActionInput::Weapon);
+			SecondaryWeapon = 2;
+		}
+	}
+	case 2:
+	{
+		if(Player != Null)
+		{
+			ActionLoad(Player, CSmMode::EActionSlot::Slot_B, G_CustomElectricPistol);
+    		ActionBind(Player, CSmMode::EActionSlot::Slot_B, CSmMode::EActionInput::Weapon);
+			SecondaryWeapon = 3;
+		}
+	}
+	default:
+	{
+		ActionBind(Player, CSmMode::EActionSlot::Slot_B, CSmMode::EActionInput::None);
+		SetPlayerWeapon(Player, CSmMode::EWeapon::Rocket, False);
+		SetPlayerAmmoMax(Player, CSmMode::EWeapon::Rocket, C_RocketsAmmo);
+		Player.AmmoGain = 1.0;
+		SecondaryWeapon = 1;
+	}
+}
+
+switch(Net_PrimWpn)
+{
+	case 3:
+	{
+		if(Player != Null)
+		{
+			ActionLoad(Player, CSmMode::EActionSlot::Slot_A, G_CustomPlasmaGun);
+			Player.AmmoGain = 0.9;
+			PrimaryWeapon = 2;
+		}
+	}
+	case 4:
+	{
+		if(Player != Null)
+		{
+			ActionLoad(Player, CSmMode::EActionSlot::Slot_A, G_CustomShotgun);
+			Player.AmmoGain = 1.;
+			PrimaryWeapon = 5;
+		}	
+	}
+	case 5:
+	{
+		ActionLoad(Player, CSmMode::EActionSlot::Slot_A, NullId);
+		SetPlayerWeapon(Player, CSmMode::EWeapon::Laser, False);
+		SetPlayerAmmoMax(Player, CSmMode::EWeapon::Laser, 1);
+		SetPlayerAmmo(Player, CSmMode::EWeapon::Laser, 1);
+		Player.AmmoGain = 0.85;
+		PrimaryWeapon = 1;
+	}
+	case 6:
+	{
+		ActionLoad(Player, CSmMode::EActionSlot::Slot_A, NullId);
+		SetPlayerWeapon(Player, CSmMode::EWeapon::Nucleus, False);
+		SetPlayerAmmoMax(Player, CSmMode::EWeapon::Nucleus, 2);
+		SetPlayerAmmo(Player, CSmMode::EWeapon::Nucleus, 1);
+		PrimaryWeapon = 4;
+	}
+	case 7:
+	{
+		if(Player != Null)
+		{
+			ActionLoad(Player, CSmMode::EActionSlot::Slot_A, G_CustomBlowBomb);
+			Player.AmmoGain = 1.;
+			PrimaryWeapon = 6;
+		}	
+	}
+	case 8:
+	{
+		if(Player != Null)
+		{
+			ActionLoad(Player, CSmMode::EActionSlot::Slot_A, G_CustomGrenades);
+			Player.AmmoGain = 0.7;
+			PrimaryWeapon = 3;
+		}
+	}
+	default:
+	{
+		ActionLoad(Player, CSmMode::EActionSlot::Slot_A, NullId);
+		SetPlayerAmmoMax(Player, CSmMode::EWeapon::Nucleus, 0);
+		SetPlayerAmmoMax(Player, CSmMode::EWeapon::Laser, 0);
+		SetPlayerAmmoMax(Player, CSmMode::EWeapon::Arrow, 0);
+		PrimaryWeapon = 0;
+	}
+}
+***					
+
 ***WhenCaptured***
 ***
 if(LandmarkGauge.Sector.PlayersIds.count > 0)
@@ -216,7 +347,7 @@ if(LandmarkGauge.Sector.PlayersIds.count > 0)
 			declare UI <=> UIManager.GetUI(Players[PlayerId]);
 			if(UI != Null)
 			{
-				declare netwrite Net_Cash for UI = C_StartCash;
+				declare netwrite Net_Cash for UI = S_StartCash;
 				Net_Cash += C_CashForCapture;
 			}	
 			ST2::SetColValue("ST_Captured", Players[PlayerId].Score, "$1F1"^TextLib::ToText(CurrentCapGoals));
@@ -273,7 +404,7 @@ if (headdistance < 0.2)
 	declare UI <=> UIManager.GetUI(Event.Shooter);
 	if(UI != Null)
 	{
-		declare netwrite Net_Cash for UI = C_StartCash;
+		declare netwrite Net_Cash for UI = S_StartCash;
 		Net_Cash += C_CashForHeadshotHit;
 	}	
 	Event.ShooterPoints += 1;
@@ -304,7 +435,7 @@ if (headdistance < 0.2)
 	declare UI <=> UIManager.GetUI(Event.Shooter);
 	if(UI != Null)
 	{
-		declare netwrite Net_Cash for UI = C_StartCash;
+		declare netwrite Net_Cash for UI = S_StartCash;
 		Net_Cash += C_CashForHeadshotHit;
 	}	
 	Points += 1;
@@ -409,7 +540,8 @@ UIManager.UIAll.TeamLabelsShowNames = CUIConfig::EVisibility::Normal;
 UIManager.UIAll.OpposingTeamLabelsVisibility = CUIConfig::ELabelsVisibility::WhenInMiddleOfScreen;
 G_ClansMapPoints	= [1 => 0, 2 => 0];
 G_Capturable 		= 0;
-G_AttackingClan = 1;
+G_AttackingClan 	= 1;
+VoteClanNb			= -1;
 G_SecondaryWeapons.clear();
 G_PrimaryWeapons.clear();
 ClanMapWinner		= 0;
@@ -431,8 +563,8 @@ foreach (Player in Players)
 	SetPlayerClan(Player, Player.RequestedClan);
 	declare UI <=> UIManager.GetUI(Player);
 	if(UI == Null) continue;
-	declare netwrite Net_Cash for UI = C_StartCash;
-	Net_Cash = C_StartCash;
+	declare netwrite Net_Cash for UI = S_StartCash;
+	Net_Cash = S_StartCash;
 	declare netwrite Net_Bought for UI = [False, False, False, False, False, False, False, False, False, False, False];
 	Net_Bought = [False, False, False, False, False, False, False, False, False, False, False];
 	
@@ -453,6 +585,9 @@ UpdateHeader(G_ClansMapPoints[1], G_ClansMapPoints[2]);
 // Debug
 Users_SetNbFakeUsers(G_BlueBot, G_RedBot);
 
+Layers::Attach("Shop");
+Layers::Hide("Shop");
+
 SM::UnspawnAllPlayers();
 WaitForPlayers();
 ***
@@ -467,14 +602,14 @@ declare CSmPlayer MVP;			// The best player in round
 
 ***StartRound***
 ***
-TempGoalNb = 0;
-RoundClanWinner = 0;
-BestRoundScore = 0;
-MVP = Null;
-G_LastProgressUpdate = 0;
-G_LastSettingsUpdate = 0;
-G_LastTempUpdate = 0;
-G_Capturable = MathLib::Rand(1, 3);
+TempGoalNb 				= 0;
+RoundClanWinner 		= 0;
+BestRoundScore 			= 0;
+MVP 					= Null;
+G_LastProgressUpdate 	= 0;
+G_LastSettingsUpdate 	= 0;
+G_LastTempUpdate 		= 0;
+G_Capturable 			= MathLib::Rand(1, 3);
 G_SecondaryWeapons.clear();
 G_PrimaryWeapons.clear();
 Mode::Synchro_DoBarrier();
@@ -483,22 +618,18 @@ Victory::RoundBegin();
 Score::RoundBegin();
 UpdateSTFooter();
 InitGoals();
-UIManager.UIAll.UISequence = CUIConfig::EUISequence::EndRound;
-// If this is the first round and turn on the map, launch the players presentation
+UIManager.UIAll.MarkersXML = "";
+// If this is the first round on the map, launch players presentation and toss
 if (MB_SectionRoundNb == 1) 
 {
 	UpdateHeader(G_ClansMapPoints[1], G_ClansMapPoints[2]);
 	MB_PlayersPresentationSequence(2500);
 
-	// Play the toss
-	if (MB_SectionMapNb == 1) 
-	{
-		MB_UseIntro = True;
-		UIManager.UIAll.UISequence_CanSkipIntroMT = False;
-		UIManager.UIAll.UISequence = CUIConfig::EUISequence::RollingBackgroundIntro;
-		VoteClanNb = Toss::Toss();
-		G_AttackingClan = Toss::SelectSide(VoteClanNb);
-	}
+	MB_UseIntro = True;
+	UIManager.UIAll.UISequence_CanSkipIntroMT = False;
+	UIManager.UIAll.UISequence = CUIConfig::EUISequence::RollingBackgroundIntro;
+	VoteClanNb = Toss::Toss();
+	G_AttackingClan = Toss::SelectSide(VoteClanNb);
 }
 UIManager.UIAll.UISequence = CUIConfig::EUISequence::EndRound;
 UIManager.UIAll.UISequence_CanSkipIntroMT = True;
@@ -510,7 +641,14 @@ Layers::Update("Players", UpdateLayerPlayers());
 Layers::Attach("Players");
 Layers::Hide("Players");
 if(ServerShutdownRequested || MatchEndRequested) break;
-UIManager.UIAll.MarkersXML = "";
+foreach (Player in AllPlayers) 
+{
+	declare UI <=> UIManager.GetUI(Player);
+	declare SpawnTicket for Player = 0;
+	declare netwrite Net_IsDead for UI = 0;
+	if(SpawnTicket < 1) Net_IsDead = 1;
+	else Net_IsDead = 0;
+}	
 Layers::Update("Shop", UpdateLayerShop());
 EnableBuyZone(G_BuyTime*1000);
 
@@ -553,6 +691,7 @@ foreach (Player in AllPlayers)
 		SpawnTicket = 0;
 		UI.SpectatorForceCameraType = -1;
 		UI.SpectatorForcedClan = -1;
+		Layers::Detach("Shop", Player);
 	} 
 	else 
 	{
@@ -593,8 +732,8 @@ if (UI != Null)
 	Layers::Attach("Progression", Player);
 	declare CurrentCapGoals for Player.Score = 0;
 	declare CurrentMVP for Player.Score = 0;
-	declare netwrite Net_PrimaryWeapon for UI = 0;
-	Net_PrimaryWeapon = 0;
+	declare netwrite Net_PrimWpn for UI = 0;
+	Net_PrimWpn = 0;
 }
 ***
 
@@ -605,8 +744,9 @@ if (UI != Null) {
 	UI.SpectatorForcedClan		= -1;
 	UI.SpectatorForceCameraType	= -1;
 	Layers::Attach("Progression", Spectator);
+	Layers::Detach("Shop", Spectator);
 }
-declare SpawnTicket for Spectator = 100;
+declare SpawnTicket for Spectator = 0;
 SpawnTicket = 0;
 ***
 
@@ -624,6 +764,7 @@ declare PlayerCountC = [1 => 0, 2 => 0];
 if(G_LastSettingsUpdate + 2000 < Now)
 {
 	G_LastSettingsUpdate = Now;
+
 	if(S_RoundTime < 20) G_RoundTime = 20;
 	else G_RoundTime = S_RoundTime;
 
@@ -667,6 +808,7 @@ foreach (Player in Players) {
 	{
 		declare NewSpectator for Player = False;
 		NewSpectator = True;
+		Layers::Detach("Shop", Player);
 	}
 }
 
@@ -675,6 +817,7 @@ foreach (Spectator in Spectators)
 {
 	declare NewSpectator for Spectator = False;
 	if (NewSpectator) NewSpectator = False;
+	Layers::Detach("Shop", Spectator);
 }
 // Spawning players
 if(RoundClanWinner == 0)
@@ -686,6 +829,7 @@ if(RoundClanWinner == 0)
 		if (Player.SpawnStatus == CSmPlayer::ESpawnStatus::NotSpawned && !HasChangedClan)
 		{
 			declare SecondaryWeapon for Player = 1;
+			declare PrimaryWeapon for Player = 0;
 			declare SpawnTicket for Player = 0;
 			if(SpawnTicket <= 0) continue;
 			if (Player.CurrentClan != 1 && Player.CurrentClan != 2) SetPlayerClan(Player, Player.RequestedClan);
@@ -697,14 +841,14 @@ if(RoundClanWinner == 0)
 					Player.ArmorMax = 300;
 					SM::SpawnPlayer(Player, Player.CurrentClan, Map::GetPlayerSpawn("SpawnAttack", 0), 3000);
 					declare MSG2 = "";
-					Message::SendBigMessage(Player, TextLib::Compose(_("|Imperative|Attack")), 6000, 0);
+					Message::SendBigMessage(Player, TextLib::Compose(_("|Imperative|Attack")), 7000, 0);
 					
 					switch(Player.User.Language)
 					{
-						case "pl": MSG2 = "$f90Znajdź punkt podatny na atak i go zdobądź by wygrać rundę.";
-						default: MSG2 = "$f90Locate vulnerable access point and do the overload to win the round.";	
+						case "pl": MSG2 = "$9d0Znajdź punkt podatny na atak i go zdobądź by wygrać rundę.";
+						default: MSG2 = "$9d0Locate vulnerable access point and do the overload to win the round.";	
 					} 
-					Message::SendStatusMessage(Player, MSG2, 6500, 0);
+					Message::SendStatusMessage(Player, MSG2, 7000, 0);
 				}	
 				else
 				{
@@ -712,74 +856,28 @@ if(RoundClanWinner == 0)
 					Player.ArmorMax = 300;
 					SM::SpawnPlayer(Player, Player.CurrentClan, Map::GetPlayerSpawn("SpawnDefence", 0), 3000);
 					declare MSG2 = ""; 
-					Message::SendBigMessage(Player, TextLib::Compose(_("|Imperative|Defend")), 6000, 0);
+					Message::SendBigMessage(Player, TextLib::Compose(_("|Imperative|Defend")), 7000, 0);
 					
 					switch(Player.User.Language)
 					{
-						case "pl": MSG2 = "$f90Broń punktu podatnego na ataki do końca trwania rundy.";
-						default: MSG2 = "$f90Protect vulnerable access point to end of the round.";	
+						case "pl": MSG2 = "$9d0Broń punktu podatnego na ataki do końca trwania rundy.";
+						default: MSG2 = "$9d0Protect vulnerable access point to end of the round.";	
 					} 
-					Message::SendStatusMessage(Player, MSG2, 6500, 0);
+					Message::SendStatusMessage(Player, MSG2, 7000, 0);
 				}	
-				SpawnTicket = 0;
 				declare UI <=> UIManager.GetUI(Player);
 				if (UI != Null) 
 				{
-					declare netread Net_Bought for UI = [False, False, False, False, False, False, False, False, False, False, False];
-	
-					if(Net_Bought[C_BoughtMoreStamina])
-					{
-						Player.StaminaMax = 1.0;
-						Player.StaminaGain = 1.0;
-						Player.SpeedPower = 1.0;
-					}
-					else
-					{
-						Player.StaminaMax = C_BasicStamina;
-						Player.StaminaGain = C_BasicStamina;
-						Player.SpeedPower = C_BasicSpeed;
-					}
-					if(Net_Bought[C_BoughtShield])
-					{
-						Player.ArmorMax = 400;
-						Player.Armor = 400;
-					}
-					else if(Net_Bought[C_BoughtJuggernautSuit])
-					{
-						Player.ArmorMax = 600;
-						Player.Armor = 600;
-					}
-					else
-					{
-						Player.Armor = 300;
-						Player.ArmorMax = 300;
-					}
-					if(Net_Bought[C_BoughtBouncingRockets])
-					{
-						ActionLoad(Player, CSmMode::EActionSlot::Slot_B, G_CustomBounceRocket);
-    					ActionBind(Player, CSmMode::EActionSlot::Slot_B, CSmMode::EActionInput::Weapon);
-						SecondaryWeapon = 2;
-					}
-					else if(Net_Bought[C_BoughtElectricPistol])
-					{
-						ActionLoad(Player, CSmMode::EActionSlot::Slot_B, G_CustomElectricPistol);
-    					ActionBind(Player, CSmMode::EActionSlot::Slot_B, CSmMode::EActionInput::Weapon);
-						SecondaryWeapon = 3;
-					}
-					else
-					{
-						ActionBind(Player, CSmMode::EActionSlot::Slot_B, CSmMode::EActionInput::None);
-						SetPlayerWeapon(Player, CSmMode::EWeapon::Rocket, False);
-						SetPlayerAmmoMax(Player, CSmMode::EWeapon::Rocket, C_RocketsAmmo);
-						Player.AmmoGain = 1.0;
-						SecondaryWeapon = 1;
-					}
+					---SpawnWithEQ---
 				}	
 				G_SecondaryWeapons[Player.Login] = SecondaryWeapon;
+				G_PrimaryWeapons[Player.Login] = PrimaryWeapon;
 				if (UI != Null)
 				{
 					declare netwrite Integer[Text] Net_SecondaryWeapons for UI;
 					Net_SecondaryWeapons = G_SecondaryWeapons;
+					declare netwrite Integer[Text] Net_PrimaryWeapons for UI;
+					Net_PrimaryWeapons = G_PrimaryWeapons;
 				}	
 			}
 			else if (Player.RequestedClan == 2)
@@ -788,82 +886,41 @@ if(RoundClanWinner == 0)
 				{
 					SM::SpawnPlayer(Player, Player.CurrentClan, Map::GetPlayerSpawn("SpawnAttack", 0), 3000);
 					declare MSG2 = "";
-					Message::SendBigMessage(Player, TextLib::Compose(_("|Imperative|Attack")), 6000, 0);
+					Message::SendBigMessage(Player, TextLib::Compose(_("|Imperative|Attack")), 7000, 0);
 					
 					switch(Player.User.Language)
 					{
 						case "pl": MSG2 = "$9d0Znajdź punkt podatny na atak i go zdobądź by wygrać rundę.";
-						default: MSG2 = "$f90Locate vulnerable access point and do the overload to win the round.";	
+						default: MSG2 = "$9d0Locate vulnerable access point and do the overload to win the round.";	
 					} 
-					Message::SendStatusMessage(Player, MSG2, 6500, 0);
+					Message::SendStatusMessage(Player, MSG2, 7000, 0);
 				}	
 				else
 				{
 					SM::SpawnPlayer(Player, Player.CurrentClan, Map::GetPlayerSpawn("SpawnDefence", 0), 3000);
 					declare MSG2 = "";
-					Message::SendBigMessage(Player, TextLib::Compose(_("|Imperative|Defend")), 6000, 0);
+					Message::SendBigMessage(Player, TextLib::Compose(_("|Imperative|Defend")), 7000, 0);
 					
 					switch(Player.User.Language)
 					{
-						case "pl": MSG2 = "$f90Broń punktu podatnego na ataki do końca trwania rundy.";
-						default: MSG2 = "$f90Protect vulnerable access point to end of the round.";	
+						case "pl": MSG2 = "$9d0Broń punktu podatnego na ataki do końca trwania rundy.";
+						default: MSG2 = "$9d0Protect vulnerable access point to end of the round.";	
 					} 
-					Message::SendStatusMessage(Player, MSG2, 6500, 0);
+					Message::SendStatusMessage(Player, MSG2, 7000, 0);
 				}	
-				SpawnTicket = 0;
 				declare UI <=> UIManager.GetUI(Player);
 				if (UI != Null) 
 				{
-					declare netread Net_Bought for UI = [False, False, False, False, False, False, False, False, False, False, False];
-			
-					if(Net_Bought[C_BoughtMoreStamina])
-					{
-						Player.StaminaMax = 1.0;
-						Player.StaminaGain = 1.0;
-						Player.SpeedPower = 1.0;
-					}
-					else
-					{
-						Player.StaminaMax = C_BasicStamina;
-						Player.StaminaGain = C_BasicStamina;
-						Player.SpeedPower = C_BasicSpeed;
-					}
-					if(Net_Bought[C_BoughtShield])
-					{
-						Player.ArmorMax = 400;
-						Player.Armor = 400;
-					}
-					else if(Net_Bought[C_BoughtJuggernautSuit])
-					{
-						Player.ArmorMax = 600;
-						Player.Armor = 600;
-					}
-					if(Net_Bought[C_BoughtBouncingRockets])
-					{
-						ActionLoad(Player, CSmMode::EActionSlot::Slot_B, G_CustomBounceRocket);
-    					ActionBind(Player, CSmMode::EActionSlot::Slot_B, CSmMode::EActionInput::Weapon);
-						SecondaryWeapon = 2;
-					}
-					else if(Net_Bought[C_BoughtElectricPistol])
-					{
-						ActionLoad(Player, CSmMode::EActionSlot::Slot_B, G_CustomElectricPistol);
-    					ActionBind(Player, CSmMode::EActionSlot::Slot_B, CSmMode::EActionInput::Weapon);
-						SecondaryWeapon = 3;
-					}
-					else
-					{
-						ActionBind(Player, CSmMode::EActionSlot::Slot_B, CSmMode::EActionInput::None);
-						SetPlayerWeapon(Player, CSmMode::EWeapon::Rocket, False);
-						SetPlayerAmmoMax(Player, CSmMode::EWeapon::Rocket, C_RocketsAmmo);
-						Player.AmmoGain = 1.0;
-						SecondaryWeapon = 1;
-					}
+					---SpawnWithEQ---
 				}	
 				G_SecondaryWeapons[Player.Login] = SecondaryWeapon;
+				G_PrimaryWeapons[Player.Login] = PrimaryWeapon;
 				if (UI != Null)
 				{
 					declare netwrite Integer[Text] Net_SecondaryWeapons for UI;
 					Net_SecondaryWeapons = G_SecondaryWeapons;
+					declare netwrite Integer[Text] Net_PrimaryWeapons for UI;
+					Net_PrimaryWeapons = G_PrimaryWeapons;
 				}
 			}
 		}
@@ -876,11 +933,6 @@ if (G_RoundTime > 0)
 	// End of the round, attackers didn't capture checkpoint
 	if (Now == EndTime) 
 	{
-		foreach (Player in Players)
-		{
-			declare SpawnTicket for Player = 0;
-			SpawnTicket = 0;
-		}
 		SM::UnspawnAllPlayers();
 		Message::CleanBigMessages();
 		Message::SendBigMessage(TextLib::Compose(_("Time limit reached!")), 4000, 0);
@@ -991,6 +1043,8 @@ if(G_LastProgressUpdate + 800 < Now)
 	G_LastProgressUpdate = Now;
 	Layers::Update("HUD", UpdateLayerHUD());
 
+	Layers::Update("Players", UpdateLayerPlayers());
+
 	G_PlayersAlive = [1 => 0, 2 => 0];
 	
 	foreach(Player in Players)
@@ -1049,7 +1103,7 @@ foreach (Event in PendingEvents)
 			declare SUI <=> UIManager.GetUI(Event.Shooter);
 			if (SUI != Null)
 			{
-				declare netwrite Net_Cash for SUI = C_StartCash;
+				declare netwrite Net_Cash for SUI = S_StartCash;
 				Net_Cash += C_CashForKill;
 			}	
 			//Remove eq that player bought
@@ -1059,8 +1113,10 @@ foreach (Event in PendingEvents)
 			declare UI <=> UIManager.GetUI(Event.Victim);
 			if (UI != Null) 
 			{
-				declare netwrite Net_PrimaryWeapon for UI = 0;
-				Net_PrimaryWeapon = 0;
+				declare netwrite Net_PrimWpn for UI = 0;
+				Net_PrimWpn = 0;
+				declare netwrite Net_SecWpn for UI = 0;
+				Net_SecWpn = 0;
 				declare netwrite Net_Bought for UI = [False, False, False, False, False, False, False, False, False, False, False];
 				Net_Bought = [False, False, False, False, False, False, False, False, False, False, False];
 			}
@@ -1109,7 +1165,7 @@ foreach (Event in PendingEvents)
 				declare UI <=> UIManager.GetUI(Event.Shooter);
 				if (UI != Null) 
 				{
-					declare netwrite Net_Cash for UI = C_StartCash;
+					declare netwrite Net_Cash for UI = S_StartCash;
 					Score::AddPoints(Event.Shooter, Event.Damage/100);
 					Net_Cash += C_CashForHit;
 					---HeadshotFunctions---
@@ -1136,10 +1192,11 @@ foreach (Event in PendingEvents)
 		{
 			declare Damage = TextLib::ToInteger(Event.Param2[0]);
            	declare Points = Damage / 100;
+			if(Damage < 100) Points = 1;
 			declare UI <=> UIManager.GetUI(Event.Shooter);
 			if (UI != Null) 
 			{
-				declare netwrite Net_Cash for UI = C_StartCash;
+				declare netwrite Net_Cash for UI = S_StartCash;
             	Net_Cash += C_CashForHit;
 				---HeadshotFunctions---
 				---ActionMakerAnnounceHeadshot---
@@ -1173,8 +1230,10 @@ foreach (Event in PendingEvents)
 		declare UI <=> UIManager.GetUI(Event.Player);
 		if (UI != Null) 
 		{
-			declare netwrite Net_PrimaryWeapon for UI = 0;
-			Net_PrimaryWeapon = 0;
+			declare netwrite Net_PrimWpn for UI = 0;
+			Net_PrimWpn = 0;
+			declare netwrite Net_SecWpn for UI = 0;
+			Net_SecWpn = 0;
 			declare netwrite Net_Bought for UI = [False, False, False, False, False, False, False, False, False, False, False];
 			Net_Bought = [False, False, False, False, False, False, False, False, False, False, False];
 		}
@@ -1240,7 +1299,7 @@ if(RoundClanWinner > 0)
 	{
 		declare UI <=> UIManager.GetUI(Player);
 		if(UI == Null) continue;
-		declare netwrite Net_Cash for UI = C_StartCash;
+		declare netwrite Net_Cash for UI = S_StartCash;
 		if(Player.CurrentClan == RoundClanWinner) Net_Cash += C_CashForWin;
 		else if(Player.CurrentClan == 3-RoundClanWinner) Net_Cash += C_CashForLoss;
 	}
@@ -1432,7 +1491,9 @@ Void SwitchWeapon(CSmPlayer _Player, CSmModeEvent::EActionInput _Input) {
 	declare PrimaryWeapon for _Player = 1;
 	declare SecondaryWeapon for _Player = 1;
 	declare CurrentWeaponSlot for _Player = 2;
-	
+
+	if(_Player != Null)
+	{
 	switch (_Input) {
 		// Primary weapon
 		case CSmModeEvent::EActionInput::Activable1: 
@@ -1455,7 +1516,7 @@ Void SwitchWeapon(CSmPlayer _Player, CSmModeEvent::EActionInput _Input) {
 					SetPlayerAmmoMax(_Player, CSmMode::EWeapon::Arrow, 0);
 					ActionLoad(_Player, CSmMode::EActionSlot::Slot_A, G_CustomPlasmaGun);
 					ActionBind(_Player, CSmMode::EActionSlot::Slot_A, CSmMode::EActionInput::Weapon);
-					_Player.AmmoGain = 1.;
+					_Player.AmmoGain = 0.9;
 				}
 				case 3:
 				{
@@ -1464,7 +1525,7 @@ Void SwitchWeapon(CSmPlayer _Player, CSmModeEvent::EActionInput _Input) {
 					SetPlayerAmmoMax(_Player, CSmMode::EWeapon::Arrow, 0);
 					ActionLoad(_Player, CSmMode::EActionSlot::Slot_A, G_CustomGrenades);
 					ActionBind(_Player, CSmMode::EActionSlot::Slot_A, CSmMode::EActionInput::Weapon);
-					_Player.AmmoGain = 1.;
+					_Player.AmmoGain = 0.7;
 				}
 				case 4:
 				{
@@ -1482,7 +1543,7 @@ Void SwitchWeapon(CSmPlayer _Player, CSmModeEvent::EActionInput _Input) {
 					SetPlayerAmmoMax(_Player, CSmMode::EWeapon::Arrow, 0);
 					ActionLoad(_Player, CSmMode::EActionSlot::Slot_A, G_CustomShotgun);
 					ActionBind(_Player, CSmMode::EActionSlot::Slot_A, CSmMode::EActionInput::Weapon);
-					_Player.AmmoGain = 1.;
+					_Player.AmmoGain = 0.8;
 				}
 				case 6:
 				{
@@ -1573,6 +1634,7 @@ Void SwitchWeapon(CSmPlayer _Player, CSmModeEvent::EActionInput _Input) {
 			CurrentWeaponSlot = 2;
 		}
 	}
+	}
 }
 
 Void DisplayNotice()
@@ -1589,53 +1651,48 @@ Void DisplayNotice()
 		{
 			case "pl":
 			{
-				MSG[1] = "Śledź maniaflash $h[maniaflash?firefight]firefight$h by uzyskać informacje o aktualizacjach";
+				MSG[1] = "Śledź maniaflash $h[maniaflash?overload]overload$h by uzyskać informacje o aktualizacjach";
 				MSG[2] = "Tryb został stworzony przez ToRRent'a";
 				MSG[3] = "Wciśnij F8 by zmodyfikować interfejs";
-				MSG[4] = "Zdobywaj strefy terytorialne by odrodzić drużynę i się uleczyć";
+				MSG[4] = "Drużyny co rundę zmieniają się rolami, jedni atakują, drudzy bronią.";
 				MSG[5] = "Jeżeli masz sugestie co do rozwoju trybu, napisz $l[http://forum.maniaplanet.com/viewtopic.php?f=10&t=28177&start=0]tutaj$l";
-				MSG[6] = "Zbierz przedmiot znajdujący się na mapie by zdobyć broń główną.";
-				MSG[7] = "Naciśnij M by zobaczyć/schwoać mapę pełnoekranową";
+				MSG[6] = "Tylko obrońcy więdzą, który punkt jest podatny na atak.";
 			}
 			case "fr": 
 			{
-				MSG[1] = "Abonne-toi au Maniaflash $h[maniaflash?firefight]firefight$h pour avoir les informations concernant les mises-à-jour et les rendez-vous";
+				MSG[1] = "Abonne-toi au Maniaflash $h[maniaflash?overload]overload$h pour avoir les informations concernant les mises-à-jour et les rendez-vous";
 				MSG[2] = "Mode de jeu créé par ToRRent";
 				MSG[3] = "Appuie sur F8 pour personnaliser l'interface";
-				MSG[4] = "Capture les objectifs pour ranimer tes coéquipiers et te soigner";
+				MSG[4] = "Teams are switching roles every round, One is attacking, another defending";
 				MSG[5] = "Pour toute suggestion concernant le mode de jeu, merci d'aller $l[http://forum.maniaplanet.com/viewtopic.php?f=10&t=28177&start=0]ici$l";
-				MSG[6] = "Collect weapon item located on map to get primary weapon.";
-				MSG[7] = "Appuie sur M pour montrer/cacher la mini-map en plein écran";
+				MSG[6] = "Only defenders know, which access point is vulnerable.";
 			}
 			case "it": 
 			{
-				MSG[1] = "Segui maniaflash $h[maniaflash?firefight]firefight$h per ot tenere le informazioni sul tema di aggiornamenti e riunioni";
+				MSG[1] = "Segui maniaflash $h[maniaflash?overload]overload$h per ot tenere le informazioni sul tema di aggiornamenti e riunioni";
 				MSG[2] = "Il modo è stato creato grazie a ToRRent'a";
 				MSG[3] = "Digiti F8 per modificare l’interfaccia";
-				MSG[4] = "catturi le zone territoriali per rinascere la squadra e curarsi";
+				MSG[4] = "Teams are switching roles every round, One is attacking, another defending";
 				MSG[5] = "Se hai suggestioni rispetti allo sviluppo del modo, scrivi $l[http://forum.maniaplanet.com/viewtopic.php?f=10&t=28177&start=0]qui$l";
-				MSG[6] = "Collect weapon item located on map to get primary weapon.";
-				MSG[7] = "Digiti M per vedere/nascondere la mappa su tutto lo schermo";
+				MSG[6] = "Only defenders know, which access point is vulnerable.";
 			}
 			case "de": 
 			{
-				MSG[1] = "Abonniere den ManiaFlash $h[maniaflash?firefight]firefight$h um Informationen über Aktualisierungen und Treffen zu erhalten";
+				MSG[1] = "Abonniere den ManiaFlash $h[maniaflash?overload]overload$h um Informationen über Aktualisierungen und Treffen zu erhalten";
 				MSG[2] = "Spielmodus erstellt durch ToRRent";
 				MSG[3] = "Drücke F8 um die Oberfläche anzupassen";
-				MSG[4] = "Erobere Ziele um Teamkameraden zu erlösen und sich selbst zu heilen";
+				MSG[4] = "Teams are switching roles every round, One is attacking, another defending";
 				MSG[5] = "Verbesserungsvorschläge bitte $l[http://forum.maniaplanet.com/viewtopic.php?f=10&t=28177&start=0]hier$l";
-				MSG[6] = "Collect weapon item located on map to get primary weapon.";
-				MSG[7] = "Minimaps anzeigen/verbergen durch Drücken von M im Vollbildmodus";
+				MSG[6] = "Only defenders know, which access point is vulnerable.";
 			}
 			default:
 			{
-				MSG[1] = "Follow maniaflash $h[maniaflash?firefight]firefight$h to get informations about updates and meetings";
+				MSG[1] = "Follow maniaflash $h[maniaflash?overload]overload$h to get informations about updates and meetings";
 				MSG[2] = "Game mode was created by ToRRent";
 				MSG[3] = "Press F8 to customize interface";
-				MSG[4] = "Capture objectives to revive teammates and heal yourself.";
+				MSG[4] = "Teams are switching roles every round, One is attacking, another defending";
 				MSG[5] = "If you have suggestion about gamemode, go $l[http://forum.maniaplanet.com/viewtopic.php?f=10&t=28177&start=0]here$l";
-				MSG[6] = "Collect weapon item located on map to get primary weapon.";
-				MSG[7] = "Press M to show/hide full screen map";
+				MSG[6] = "Only defenders know, which access point is vulnerable.";
 			}
 		}
 
@@ -1657,7 +1714,7 @@ Text UpdateLayerHUD()
 <frame hidden="1" id="Frame_Overlay">
 	<label posn="-65 -70 1" text="1: -" textsize="1" halign="left" id="Label_Primary"/>
 	<label posn="-65 -74 1" text="2: -" textsize="1" halign="left" id="Label_Secondary"/>
-	<label posn="45 -68 1" text="0 $9f0$$" textsize="4" halign="left" id="Label_Cash"/>
+	<label posn="55 -71 1" text="0 $9f0$$" textsize="4" halign="right" id="Label_Cash"/>
 </frame>
 <script><!--	
 main()
@@ -1671,21 +1728,24 @@ main()
 		yield;
 		if(InputPlayer == Null) continue;
 		if(InputPlayer.Armor > 0)
-		{
+		{			
 			Frame_Overlay.Visible = True;
-			declare netread Net_Cash for UI = {{{C_StartCash}}};
+			declare netread Net_Cash for UI = {{{S_StartCash}}};
 			Label_Cash.Value = Net_Cash^" $9f0$$";
-			declare netread Net_PrimaryWeapon for UI = 0;
-			switch(Net_PrimaryWeapon)
+			declare netread Integer[Text] Net_PrimaryWeapons for UI;
+			if(Net_PrimaryWeapons.existskey(InputPlayer.Login))
 			{
-				case 1: Label_Primary.Value = "1: Laser";
-				case 2: Label_Primary.Value = "1: Plasma Gun";
-				case 3: Label_Primary.Value = "1: Grenades";
-				case 4: Label_Primary.Value = "1: Nucleus";
-				case 5: Label_Primary.Value = "1: Shotgun";
-				case 6: Label_Primary.Value = "1: BlowBomb";
-				default: Label_Primary.Value = "1: -";
-			}
+				switch(Net_PrimaryWeapons[InputPlayer.Login])
+				{
+					case 1: Label_Primary.Value = "1: Laser";
+					case 2: Label_Primary.Value = "1: Plasma Gun";
+					case 3: Label_Primary.Value = "1: Grenades";
+					case 4: Label_Primary.Value = "1: Nucleus";
+					case 5: Label_Primary.Value = "1: Shotgun";
+					case 6: Label_Primary.Value = "1: Blow Bomb";
+					default: Label_Primary.Value = "1: -";
+				}
+			}	
 			declare netread Integer[Text] Net_SecondaryWeapons for UI;
 			if(Net_SecondaryWeapons.existskey(InputPlayer.Login))
 			{
@@ -1742,7 +1802,38 @@ Void UpdateMarker()
 		}
 
 		UI.MarkersXML = PlayerManialink;
-	}	
+	}
+	foreach(Spectator in Spectators)
+	{
+		declare UI <=> UIManager.GetUI(Spectator);
+		if (UI == Null) continue;
+		declare PlayerManialink for Spectator = "";
+		PlayerManialink = "";
+
+		foreach (Goal in MapLandmarks_Gauge) 
+		{
+			declare PosX = Goal.Position.X;
+			declare PosY = Goal.Position.Y + 0.3;
+			declare PosZ = Goal.Position.Z;
+			if (Goal.Tag == "Server A") 
+			{
+				if(G_Capturable == 1) PlayerManialink ^= """<marker label="$oA $z- $f30Vulnerable" pos="{{{PosX}}} {{{PosY}}} {{{PosZ}}}" hudvisibility="Always" />""";
+				else PlayerManialink ^= """<marker label="$oA $z- $9f0Safe" pos="{{{PosX}}} {{{PosY}}} {{{PosZ}}}" hudvisibility="Always" />""";
+			} 
+			else if (Goal.Tag == "Server B") 
+			{
+				if(G_Capturable == 2) PlayerManialink ^= """<marker label="$oB $z- $f30Vulnerable" pos="{{{PosX}}} {{{PosY}}} {{{PosZ}}}" hudvisibility="Always" />""";
+				else PlayerManialink ^= """<marker label="$oB $z- $9f0Safe" pos="{{{PosX}}} {{{PosY}}} {{{PosZ}}}" hudvisibility="Always" />""";
+			}
+			else if (Goal.Tag == "Server C") 
+			{
+				if(G_Capturable == 3) PlayerManialink ^= """<marker label="$oC $z- $f30Vulnerable" pos="{{{PosX}}} {{{PosY}}} {{{PosZ}}}" hudvisibility="Always" />""";
+				else PlayerManialink ^= """<marker label="$oC $z- $9f0Safe" pos="{{{PosX}}} {{{PosY}}} {{{PosZ}}}" hudvisibility="Always" />""";
+			}
+		}
+
+		UI.MarkersXML = PlayerManialink;
+	}
 }
 
 Text UpdateLayerRulesReminder() {
@@ -1821,7 +1912,7 @@ Text UpdateLayerProgressBar()
       <label1>Hakowanie...</label1>
       <label2>Zły punkt, znajdź podatny na atak.</label2>
       <label3>Ten punkt jest bezpieczny, chroń punkt podatny na ataki.</label3>
-	  <label4>Protect this access point.</label4>
+	  <label4>Broń tego punktu przed atakami.</label4>
    </language>
 </dico>
 	<frame class="LibCustomUI_Module" id="FireFight_GaugeCapture">
@@ -1972,7 +2063,7 @@ Text UpdateLayerPlayers()
 <framemodel id="Framemodel_ArmorsLeft">
 	<gauge posn="-4 6. 2" sizen="40 16" drawbg="0" color="0007" ratio="0.989" drawblockbg="0" />
 	<gauge posn="-4 6. 1" sizen="40 16" drawbg="0" drawblockbg="0" color="{{{Clan1Color}}}F" id="Gauge_Armor" />
-	<quad posn="0 -2 3" sizen="4 4" bgcolor="FFFA" halign="left" valign="center" id="Quad_Avatar" />
+	<quad posn="0 -2.4 3" sizen="4 4" bgcolor="FFFA" halign="left" valign="center" id="Quad_Avatar" />
 	<label posn="5 -0.5 3" sizen="21 6" scale="0.9" id="Label_Pseudo" />
 	<label posn="29 -0.5 3" sizen="3 6" style="TextRaceChrono" textsize="2" id="Label_Armors" />
 	<quad posn="33 -2.5 3" sizen="5.1 5.1" halign="left" valign="center" id="Quad_SecondaryWeapon" />
@@ -1983,7 +2074,7 @@ Text UpdateLayerPlayers()
 <framemodel id="Framemodel_ArmorsRight">
 	<gauge posn="4 6. 2" sizen="40 16" halign="right" drawbg="0" color="0007" ratio="0.989" drawblockbg="0" />
 	<gauge posn="4 6. 1" sizen="40 16" halign="right" drawbg="0" drawblockbg="0" color="{{{Clan2Color}}}F" id="Gauge_Armor" />
-	<quad posn="0 -2 3" sizen="4 4" bgcolor="FFFA" halign="right" valign="center" id="Quad_Avatar" />
+	<quad posn="0 -2.4 3" sizen="4 4" bgcolor="FFFA" halign="right" valign="center" id="Quad_Avatar" />
 	<label posn="-5 -0.5 3" sizen="21 6" halign="right" scale="0.9" id="Label_Pseudo" />
 	<label posn="-29 -0.5 3" sizen="3 6" halign="right" style="TextRaceChrono" textsize="2" id="Label_Armors" />
 	<quad posn="-33 -2.5 3" sizen="5.1 5.1" halign="right" valign="center" id="Quad_SecondaryWeapon" />
@@ -2008,8 +2099,8 @@ Text UpdateLayerPlayers()
 	<frame posn="2 -7 1" id="Frame_PlayersList">
 		{{{Panels[1]}}}
 	</frame>
-	<quad posn="-3 -2 0" sizen="44 5.5" style="EnergyBar" substyle="BgText"/>
-	<label posn="4 -3" sizen="25 16" text="{{{Team1Name}}}" />
+	<quad posn="-3 -2 0" sizen="45 5.5" style="EnergyBar" substyle="BgText"/>
+	<label posn="4 -3" sizen="20 16" text="{{{Team1Name}}}" />
 	<quad posn="30.5 -3 3" sizen="3 3" image="{{{ArmorImage}}}" />
 	<label posn="35 -3 3" style="TextRaceChrono" textsize="2" id="Label_ArmorsLeft" />
 </frame>
@@ -2020,11 +2111,14 @@ Text UpdateLayerPlayers()
 	<frame posn="-2 -7 1" halign="right" id="Frame_PlayersList">
 		{{{Panels[2]}}}
 	</frame>
-	<quad posn="3 -2 0" halign="right" sizen="44 5.5" style="EnergyBar" substyle="BgText"/>
-	<label posn="-4 -3" halign="right" sizen="25 16" text="{{{Team2Name}}}" />
+	<quad posn="3 -2 0" halign="right" sizen="45 5.5" style="EnergyBar" substyle="BgText"/>
+	<label posn="-4 -3" halign="right" sizen="20 16" text="{{{Team2Name}}}" />
 	<quad posn="-30.5 -3 3" halign="right" sizen="3 3" image="{{{ArmorImage}}}" />
 	<label posn="-35 -3 3" halign="right" style="TextRaceChrono" textsize="2" id="Label_ArmorsLeft" />
 </frame>
+</frame>
+<frame posn="158 -84">
+	<label halign="right" style="CardButtonSmallS" text="Post feedback" scriptevents="1" url="http://forum.maniaplanet.com/viewtopic.php?f=10&t=28177&start=0" />
 </frame>
 <script><!--
 #Include "TextLib" as TL
@@ -2158,13 +2252,13 @@ Void EnableBuyZone(Integer _TimeToChoose)
 	declare Boolean CountdownPlayed = False;
 	declare PreRoundEndTime = Now + _TimeToChoose;
 	UIManager.UIAll.CountdownEndTime = PreRoundEndTime;
+	Layers::Show("Shop");
 	foreach (Player in Players)
 	{
 		declare UI <=> UIManager.GetUI(Player);
 		if (UI == Null) continue;
 		declare netwrite Net_ShopBill for UI = 0;
 		Net_ShopBill = 0;
-		Layers::Attach("Shop", Player);
 	}	
 
 	while (PreRoundEndTime > Now && !ServerShutdownRequested && !MatchEndRequested) 
@@ -2181,15 +2275,8 @@ Void EnableBuyZone(Integer _TimeToChoose)
 			if(Player.IsFakePlayer) G_SecondaryWeapons[Player.Login] = 1;
 			declare UI <=> UIManager.GetUI(Player);
 			if (UI == Null) continue;
-			// If the player changed clan during the class selection
-			if (Player.RequestedClan != Player.CurrentClan) 
-			{
-				Layers::Detach("Shop", Player);
-				SetPlayerClan(Player, Player.RequestedClan);
-				Layers::Attach("Shop", Player);
-			}
-			/*declare SecondaryWeapon for Player = 1;
-			G_SecondaryWeapons[Player.Login] = SecondaryWeapon;*/
+			// If the player changed clan during buying
+			if (Player.RequestedClan != Player.CurrentClan) SetPlayerClan(Player, Player.RequestedClan);
 		}
 	}	
 	
@@ -2199,14 +2286,14 @@ Void EnableBuyZone(Integer _TimeToChoose)
 		if (UI == Null) continue;
 		declare netwrite Integer[Text] Net_SecondaryWeapons for UI;
 		Net_SecondaryWeapons = G_SecondaryWeapons;
-		Layers::Detach("Shop", Player);
-		declare netwrite Net_Cash for UI = C_StartCash;
-		declare netread Net_ShopBill for UI = C_StartCash;
+		declare netwrite Net_Cash for UI = S_StartCash;
+		declare netread Net_ShopBill for UI = S_StartCash;
 		Net_Cash -= Net_ShopBill;
-	}	
+	}
+	Layers::Hide("Shop");
 	
-Layers::Update("HUD", UpdateLayerHUD());
-MB_Sleep(2000);
+	Layers::Update("HUD", UpdateLayerHUD());
+	MB_Sleep(2000);
 }
 
 Void WaitForPlayers() 
@@ -2307,8 +2394,8 @@ Text UpdateLayerShop() {
       <buy7>Nucleus</buy7>
       <buy8>Blow Bomb</buy8>
       <buy9>Burning grenades</buy9>
-      <buy10>4 armors instead 3</buy10>
-      <buy11>6 armors instead 3</buy11>
+      <buy10>1 additional armor</buy10>
+      <buy11>3 additional armors</buy11>
       <rewards>Cash rewards</rewards>
 	  <hit>Hit:</hit>
 	  <head>Headshot hit:</head>
@@ -2319,6 +2406,7 @@ Text UpdateLayerShop() {
       <primary>Buy primary Weapon</primary>
       <sec>Buy secondary Weapon</sec>
       <abi>Buy Abilities</abi>
+	  <abitip>(Works only 1 round)</abitip>
       <rule1>- Use your money to buy equipment.</rule1>
       <rule2>- You can buy only one secondary weapon and one primary weapon.</rule2>
       <rule3>- If you not buy secondary weapon, you will play with 3 rockets.</rule3>
@@ -2335,8 +2423,8 @@ Text UpdateLayerShop() {
       <buy7>Nucleus</buy7>
       <buy8>Bomba</buy8>
       <buy9>Płonące Granaty</buy9>
-      <buy10>4 pancerze zamiast 3</buy10>
-      <buy11>6 pancerzy zamiast 3</buy11>
+      <buy10>1 dodatkowy pancerz</buy10>
+      <buy11>3 dodatkowe pancerze</buy11>
       <rewards>Jak zdobyć hajs?</rewards>
 	  <hit>Trafienie:</hit>
 	  <head>Traf. (Headshot):</head>
@@ -2347,6 +2435,7 @@ Text UpdateLayerShop() {
       <primary>Kup broń główną</primary>
       <sec>Kup broń podręczną</sec>
       <abi>Kup zdolności</abi>
+	  <abitip>(Działają tylko 1 rundę)</abitip>
       <rule1>- Użyj pieniędzy by kupić wyposażenie.</rule1>
       <rule2>- Możesz kupić tylko jedną broń zapasową i jedną broń główną.</rule2>
       <rule3>- Jeżeli nie kupisz broni podręcznej, dostaniesz 3 zwykłe rakiety.</rule3>
@@ -2381,7 +2470,30 @@ main()
 	declare B_Buy11 <=> (Page.GetFirstChild("B_buy11") as CMlLabel);
 	declare L_Cash <=> (Page.GetFirstChild("L_Cash") as CMlLabel);
 	
-	declare PreventLoop = 0;
+	if (InputPlayer != Null)
+	{
+		declare netwrite Net_Bought for UI = [False, False, False, False, False, False, False, False, False, False, False];
+		declare netwrite Net_ShopBill for UI = 0;
+		declare netwrite Net_SecWpn for UI = 0;
+		declare netwrite Net_PrimWpn for UI = 0;
+		declare netread Net_IsDead for UI = 0;
+		Net_ShopBill = 0;
+		if({{{MB_SectionRoundNb}}} == 1)
+		{
+			Net_Bought = [False, False, False, False, False, False, False, False, False, False, False];
+			Net_SecWpn = 0;
+			Net_PrimWpn = 0;
+		}
+		if(Net_IsDead == 1)
+		{
+			Net_Bought = [False, False, False, False, False, False, False, False, False, False, False];
+			Net_SecWpn = 0;
+			Net_PrimWpn = 0;
+		}
+		Net_Bought[0] = False;
+		Net_Bought[9] = False;
+		Net_Bought[10] = False;
+	}
 	
 	while (True) 
 	{
@@ -2389,100 +2501,563 @@ main()
 
 		if (InputPlayer == Null) continue;
 		declare ShopPrices = {{{C_ShopPrices}}};
-		declare CanBuy = [True, True, True, True, True, True, True, True, True, True, True];
 		declare netwrite Net_Bought for UI = [False, False, False, False, False, False, False, False, False, False, False];
-		declare netread Net_Cash for UI = {{{C_StartCash}}};
+		declare netread Net_Cash for UI = {{{S_StartCash}}};
 		declare netwrite Net_ShopBill for UI = 0;
-		if({{{MB_SectionRoundNb}}} == 1 && PreventLoop == 0)
-		{
-			PreventLoop += 1;
-			Net_Bought = [False, False, False, False, False, False, False, False, False, False, False];
-			CanBuy = [True, True, True, True, True, True, True, True, True, True, True];
-		}	
-		L_Cash.SetText(TL::Compose(_("$8a0%1 $f90$$"), TL::ToText(Net_Cash - Net_ShopBill)));
+		declare netwrite Net_SecWpn for UI = 0;
+		declare netwrite Net_PrimWpn for UI = 0;
+		L_Cash.SetText(TL::Compose(_("$cdc%1 $9f0$$"), TL::ToText(Net_Cash - Net_ShopBill)));
 		
 		if(Net_Bought[0])
 		{
 			B_Buy1.Hide();
 			L_Buy1.Show();
 			L_Buy1.SetText("$9f0Bought");
-			CanBuy[0] = False;
 		}	
 		else if(Net_Cash - Net_ShopBill < ShopPrices[1])
 		{
 			L_Buy1.Show();
 			L_Buy1.SetText(TL::Compose(_("$f90Need %1$$"), TL::ToText(ShopPrices[1] - Net_Cash + Net_ShopBill)));
 			B_Buy1.Hide();
-			CanBuy[0] = False;
 		}	
 		else
 		{
 			B_Buy1.SetText("Buy ("^ShopPrices[1]^"$$)");
 			L_Buy1.Hide();
-			CanBuy[0] = True;
 		}	
 		
+		switch(Net_SecWpn)
+		{
+			case 1:
+			{
+				B_Buy2.Hide();
+				L_Buy2.Show();
+				L_Buy2.SetText("$9f0Bought");
+				if(Net_Cash - Net_ShopBill < ShopPrices[3])
+				{
+					L_Buy3.Show();
+					L_Buy3.SetText(TL::Compose(_("$f90Need %1$$"), TL::ToText(ShopPrices[3]- Net_Cash + Net_ShopBill)));
+					B_Buy3.Hide();
+				}	
+				else
+				{
+					B_Buy3.Show();
+					B_Buy3.SetText("Buy ("^ShopPrices[3]^"$$)");
+					L_Buy3.Hide();
+				}	
+			}
+			case 2:
+			{
+				B_Buy3.Hide();
+				L_Buy3.Show();
+				L_Buy3.SetText("$9f0Bought");
+				if(Net_Cash - Net_ShopBill < ShopPrices[2])
+				{
+					L_Buy2.Show();
+					L_Buy2.SetText(TL::Compose(_("$f90Need %1$$"), TL::ToText(ShopPrices[2] - Net_Cash+ Net_ShopBill)));
+					B_Buy2.Hide();
+				}	
+				else
+				{
+					B_Buy2.Show();
+					B_Buy2.SetText("Buy ("^ShopPrices[2]^"$$)");
+					L_Buy2.Hide();
+				}
+			}
+		}
+		
+		switch(Net_PrimWpn)
+		{
+			case 3:
+			{
+				B_Buy4.Hide();
+				L_Buy4.Show();
+				L_Buy4.SetText("$9f0Bought");
+				
+				if(Net_Cash - Net_ShopBill < ShopPrices[5])
+				{
+					L_Buy5.Show();
+					L_Buy5.SetText(TL::Compose(_("$f90Need %1$$"), TL::ToText(ShopPrices[5] - Net_Cash + Net_ShopBill)));
+					B_Buy5.Hide();
+				}	
+				else
+				{
+					B_Buy5.Show();
+					B_Buy5.SetText("Buy ("^ShopPrices[5]^"$$)");
+					L_Buy5.Hide();
+				}
+				
+				if(Net_Cash - Net_ShopBill < ShopPrices[6])
+				{
+					L_Buy6.Show();
+					L_Buy6.SetText(TL::Compose(_("$f90Need %1$$"), TL::ToText(ShopPrices[6] - Net_Cash + Net_ShopBill)));
+					B_Buy6.Hide();
+				}	
+				else
+				{
+					B_Buy6.Show();
+					B_Buy6.SetText("Buy ("^ShopPrices[6]^"$$)");
+					L_Buy6.Hide();
+				}
+				
+				if(Net_Cash - Net_ShopBill < ShopPrices[7])
+				{
+					L_Buy7.Show();
+					L_Buy7.SetText(TL::Compose(_("$f90Need %1$$"), TL::ToText(ShopPrices[7] - Net_Cash + Net_ShopBill)));
+					B_Buy7.Hide();
+				}	
+				else
+				{
+					B_Buy7.Show();
+					B_Buy7.SetText("Buy ("^ShopPrices[7]^"$$)");
+					L_Buy7.Hide();
+				}	
+				
+				if(Net_Cash - Net_ShopBill < ShopPrices[8])
+				{
+					L_Buy8.Show();
+					L_Buy8.SetText(TL::Compose(_("$f90Need %1$$"), TL::ToText(ShopPrices[8] - Net_Cash + Net_ShopBill)));
+					B_Buy8.Hide();
+				}	
+				else
+				{
+					B_Buy8.Show();
+					B_Buy8.SetText("Buy ("^ShopPrices[8]^"$$)");
+					L_Buy8.Hide();
+				}	
+				
+				if(Net_Cash - Net_ShopBill < ShopPrices[9])
+				{
+					L_Buy9.Show();
+					L_Buy9.SetText(TL::Compose(_("$f90Need %1$$"), TL::ToText(ShopPrices[9] - Net_Cash + Net_ShopBill)));
+					B_Buy9.Hide();
+				}	
+				else
+				{
+					B_Buy9.Show();
+					B_Buy9.SetText("Buy ("^ShopPrices[9]^"$$)");
+					L_Buy9.Hide();
+				}
+			}
+			case 4:
+			{
+				B_Buy5.Hide();
+				L_Buy5.Show();
+				L_Buy5.SetText("$9f0Bought");
+				
+				if(Net_Cash - Net_ShopBill < ShopPrices[4])
+				{
+					L_Buy4.Show();
+					L_Buy4.SetText(TL::Compose(_("$f90Need %1$$"), TL::ToText(ShopPrices[4] - Net_Cash + Net_ShopBill)));
+					B_Buy4.Hide();
+				}	
+				else
+				{
+					B_Buy4.Show();
+					B_Buy4.SetText("Buy ("^ShopPrices[4]^"$$)");
+					L_Buy4.Hide();
+				}
+				
+				if(Net_Cash - Net_ShopBill < ShopPrices[6])
+				{
+					L_Buy6.Show();
+					L_Buy6.SetText(TL::Compose(_("$f90Need %1$$"), TL::ToText(ShopPrices[6] - Net_Cash + Net_ShopBill)));
+					B_Buy6.Hide();
+				}	
+				else
+				{
+					B_Buy6.Show();
+					B_Buy6.SetText("Buy ("^ShopPrices[6]^"$$)");
+					L_Buy6.Hide();
+				}
+				
+				if(Net_Cash - Net_ShopBill < ShopPrices[7])
+				{
+					L_Buy7.Show();
+					L_Buy7.SetText(TL::Compose(_("$f90Need %1$$"), TL::ToText(ShopPrices[7] - Net_Cash + Net_ShopBill)));
+					B_Buy7.Hide();
+				}	
+				else
+				{
+					B_Buy7.Show();
+					B_Buy7.SetText("Buy ("^ShopPrices[7]^"$$)");
+					L_Buy7.Hide();
+				}	
+				
+				if(Net_Cash - Net_ShopBill < ShopPrices[8])
+				{
+					L_Buy8.Show();
+					L_Buy8.SetText(TL::Compose(_("$f90Need %1$$"), TL::ToText(ShopPrices[8] - Net_Cash + Net_ShopBill)));
+					B_Buy8.Hide();
+				}	
+				else
+				{
+					B_Buy8.Show();
+					B_Buy8.SetText("Buy ("^ShopPrices[8]^"$$)");
+					L_Buy8.Hide();
+				}	
+				
+				if(Net_Cash - Net_ShopBill < ShopPrices[9])
+				{
+					L_Buy9.Show();
+					L_Buy9.SetText(TL::Compose(_("$f90Need %1$$"), TL::ToText(ShopPrices[9] - Net_Cash + Net_ShopBill)));
+					B_Buy9.Hide();
+				}	
+				else
+				{
+					B_Buy9.Show();
+					B_Buy9.SetText("Buy ("^ShopPrices[9]^"$$)");
+					L_Buy9.Hide();
+				}
+			}
+			case 5:
+			{
+				B_Buy6.Hide();
+				L_Buy6.Show();
+				L_Buy6.SetText("$9f0Bought");
+				
+				if(Net_Cash - Net_ShopBill < ShopPrices[4])
+				{
+					L_Buy4.Show();
+					L_Buy4.SetText(TL::Compose(_("$f90Need %1$$"), TL::ToText(ShopPrices[4] - Net_Cash + Net_ShopBill)));
+					B_Buy4.Hide();
+				}	
+				else
+				{
+					B_Buy4.Show();
+					B_Buy4.SetText("Buy ("^ShopPrices[4]^"$$)");
+					L_Buy4.Hide();
+				}
+				
+				if(Net_Cash - Net_ShopBill < ShopPrices[5])
+				{
+					L_Buy5.Show();
+					L_Buy5.SetText(TL::Compose(_("$f90Need %1$$"), TL::ToText(ShopPrices[5] - Net_Cash + Net_ShopBill)));
+					B_Buy5.Hide();
+				}	
+				else
+				{
+					B_Buy5.Show();
+					B_Buy5.SetText("Buy ("^ShopPrices[5]^"$$)");
+					L_Buy5.Hide();
+				}
+				
+				if(Net_Cash - Net_ShopBill < ShopPrices[7])
+				{
+					L_Buy7.Show();
+					L_Buy7.SetText(TL::Compose(_("$f90Need %1$$"), TL::ToText(ShopPrices[7] - Net_Cash + Net_ShopBill)));
+					B_Buy7.Hide();
+				}	
+				else
+				{
+					B_Buy7.Show();
+					B_Buy7.SetText("Buy ("^ShopPrices[7]^"$$)");
+					L_Buy7.Hide();
+				}	
+				
+				if(Net_Cash - Net_ShopBill < ShopPrices[8])
+				{
+					L_Buy8.Show();
+					L_Buy8.SetText(TL::Compose(_("$f90Need %1$$"), TL::ToText(ShopPrices[8] - Net_Cash + Net_ShopBill)));
+					B_Buy8.Hide();
+				}	
+				else
+				{
+					B_Buy8.Show();
+					B_Buy8.SetText("Buy ("^ShopPrices[8]^"$$)");
+					L_Buy8.Hide();
+				}	
+				
+				if(Net_Cash - Net_ShopBill < ShopPrices[9])
+				{
+					L_Buy9.Show();
+					L_Buy9.SetText(TL::Compose(_("$f90Need %1$$"), TL::ToText(ShopPrices[9] - Net_Cash + Net_ShopBill)));
+					B_Buy9.Hide();
+				}	
+				else
+				{
+					B_Buy9.Show();
+					B_Buy9.SetText("Buy ("^ShopPrices[9]^"$$)");
+					L_Buy9.Hide();
+				}
+			}
+			case 6:
+			{
+				B_Buy7.Hide();
+				L_Buy7.Show();
+				L_Buy7.SetText("$9f0Bought");
+				
+				if(Net_Cash - Net_ShopBill < ShopPrices[4])
+				{
+					L_Buy4.Show();
+					L_Buy4.SetText(TL::Compose(_("$f90Need %1$$"), TL::ToText(ShopPrices[4] - Net_Cash + Net_ShopBill)));
+					B_Buy4.Hide();
+				}	
+				else
+				{
+					B_Buy4.Show();
+					B_Buy4.SetText("Buy ("^ShopPrices[4]^"$$)");
+					L_Buy4.Hide();
+				}
+				
+				if(Net_Cash - Net_ShopBill < ShopPrices[5])
+				{
+					L_Buy5.Show();
+					L_Buy5.SetText(TL::Compose(_("$f90Need %1$$"), TL::ToText(ShopPrices[5] - Net_Cash + Net_ShopBill)));
+					B_Buy5.Hide();
+				}	
+				else
+				{
+					B_Buy5.Show();
+					B_Buy5.SetText("Buy ("^ShopPrices[5]^"$$)");
+					L_Buy5.Hide();
+				}
+				
+				if(Net_Cash - Net_ShopBill < ShopPrices[6])
+				{
+					L_Buy6.Show();
+					L_Buy6.SetText(TL::Compose(_("$f90Need %1$$"), TL::ToText(ShopPrices[6] - Net_Cash + Net_ShopBill)));
+					B_Buy6.Hide();
+				}	
+				else
+				{
+					B_Buy6.Show();
+					B_Buy6.SetText("Buy ("^ShopPrices[6]^"$$)");
+					L_Buy6.Hide();
+				}	
+				
+				if(Net_Cash - Net_ShopBill < ShopPrices[8])
+				{
+					L_Buy8.Show();
+					L_Buy8.SetText(TL::Compose(_("$f90Need %1$$"), TL::ToText(ShopPrices[8] - Net_Cash + Net_ShopBill)));
+					B_Buy8.Hide();
+				}	
+				else
+				{
+					B_Buy8.Show();
+					B_Buy8.SetText("Buy ("^ShopPrices[8]^"$$)");
+					L_Buy8.Hide();
+				}	
+				
+				if(Net_Cash - Net_ShopBill < ShopPrices[9])
+				{
+					L_Buy9.Show();
+					L_Buy9.SetText(TL::Compose(_("$f90Need %1$$"), TL::ToText(ShopPrices[9] - Net_Cash + Net_ShopBill)));
+					B_Buy9.Hide();
+				}	
+				else
+				{
+					B_Buy9.Show();
+					B_Buy9.SetText("Buy ("^ShopPrices[9]^"$$)");
+					L_Buy9.Hide();
+				}
+			}
+			case 7:
+			{
+				B_Buy8.Hide();
+				L_Buy8.Show();
+				L_Buy8.SetText("$9f0Bought");
+				
+				if(Net_Cash - Net_ShopBill < ShopPrices[4])
+				{
+					L_Buy4.Show();
+					L_Buy4.SetText(TL::Compose(_("$f90Need %1$$"), TL::ToText(ShopPrices[4] - Net_Cash + Net_ShopBill)));
+					B_Buy4.Hide();
+				}	
+				else
+				{
+					B_Buy4.Show();
+					B_Buy4.SetText("Buy ("^ShopPrices[4]^"$$)");
+					L_Buy4.Hide();
+				}
+				
+				if(Net_Cash - Net_ShopBill < ShopPrices[5])
+				{
+					L_Buy5.Show();
+					L_Buy5.SetText(TL::Compose(_("$f90Need %1$$"), TL::ToText(ShopPrices[5] - Net_Cash + Net_ShopBill)));
+					B_Buy5.Hide();
+				}	
+				else
+				{
+					B_Buy5.Show();
+					B_Buy5.SetText("Buy ("^ShopPrices[5]^"$$)");
+					L_Buy5.Hide();
+				}
+				
+				if(Net_Cash - Net_ShopBill < ShopPrices[6])
+				{
+					L_Buy6.Show();
+					L_Buy6.SetText(TL::Compose(_("$f90Need %1$$"), TL::ToText(ShopPrices[6] - Net_Cash + Net_ShopBill)));
+					B_Buy6.Hide();
+				}	
+				else
+				{
+					B_Buy6.Show();
+					B_Buy6.SetText("Buy ("^ShopPrices[6]^"$$)");
+					L_Buy6.Hide();
+				}	
+				
+				if(Net_Cash - Net_ShopBill < ShopPrices[7])
+				{
+					L_Buy7.Show();
+					L_Buy7.SetText(TL::Compose(_("$f90Need %1$$"), TL::ToText(ShopPrices[7] - Net_Cash + Net_ShopBill)));
+					B_Buy7.Hide();
+				}	
+				else
+				{
+					B_Buy7.Show();
+					B_Buy7.SetText("Buy ("^ShopPrices[7]^"$$)");
+					L_Buy7.Hide();
+				}	
+				
+				if(Net_Cash - Net_ShopBill < ShopPrices[9])
+				{
+					L_Buy9.Show();
+					L_Buy9.SetText(TL::Compose(_("$f90Need %1$$"), TL::ToText(ShopPrices[9] - Net_Cash + Net_ShopBill)));
+					B_Buy9.Hide();
+				}	
+				else
+				{
+					B_Buy9.Show();
+					B_Buy9.SetText("Buy ("^ShopPrices[9]^"$$)");
+					L_Buy9.Hide();
+				}
+			}
+			case 8:
+			{
+				B_Buy9.Hide();
+				L_Buy9.Show();
+				L_Buy9.SetText("$9f0Bought");
+				
+				if(Net_Cash - Net_ShopBill < ShopPrices[4])
+				{
+					L_Buy4.Show();
+					L_Buy4.SetText(TL::Compose(_("$f90Need %1$$"), TL::ToText(ShopPrices[4] - Net_Cash + Net_ShopBill)));
+					B_Buy4.Hide();
+				}	
+				else
+				{
+					B_Buy4.Show();
+					B_Buy4.SetText("Buy ("^ShopPrices[4]^"$$)");
+					L_Buy4.Hide();
+				}
+				
+				if(Net_Cash - Net_ShopBill < ShopPrices[5])
+				{
+					L_Buy5.Show();
+					L_Buy5.SetText(TL::Compose(_("$f90Need %1$$"), TL::ToText(ShopPrices[5] - Net_Cash + Net_ShopBill)));
+					B_Buy5.Hide();
+				}	
+				else
+				{
+					B_Buy5.Show();
+					B_Buy5.SetText("Buy ("^ShopPrices[5]^"$$)");
+					L_Buy5.Hide();
+				}
+				
+				if(Net_Cash - Net_ShopBill < ShopPrices[6])
+				{
+					L_Buy6.Show();
+					L_Buy6.SetText(TL::Compose(_("$f90Need %1$$"), TL::ToText(ShopPrices[6] - Net_Cash + Net_ShopBill)));
+					B_Buy6.Hide();
+				}	
+				else
+				{
+					B_Buy6.Show();
+					B_Buy6.SetText("Buy ("^ShopPrices[6]^"$$)");
+					L_Buy6.Hide();
+				}	
+				
+				if(Net_Cash - Net_ShopBill < ShopPrices[7])
+				{
+					L_Buy7.Show();
+					L_Buy7.SetText(TL::Compose(_("$f90Need %1$$"), TL::ToText(ShopPrices[7] - Net_Cash + Net_ShopBill)));
+					B_Buy7.Hide();
+				}	
+				else
+				{
+					B_Buy7.Show();
+					B_Buy7.SetText("Buy ("^ShopPrices[7]^"$$)");
+					L_Buy7.Hide();
+				}	
+				
+				if(Net_Cash - Net_ShopBill < ShopPrices[8])
+				{
+					L_Buy8.Show();
+					L_Buy8.SetText(TL::Compose(_("$f90Need %1$$"), TL::ToText(ShopPrices[8] - Net_Cash + Net_ShopBill)));
+					B_Buy8.Hide();
+				}	
+				else
+				{
+					B_Buy8.Show();
+					B_Buy8.SetText("Buy ("^ShopPrices[8]^"$$)");
+					L_Buy8.Hide();
+				}
+			}
+		}
+		
+		// Bouncing rockets
 		if(Net_Bought[1])
 		{
 			B_Buy2.Hide();
 			L_Buy2.Show();
 			L_Buy2.SetText("$9f0Bought");
-			CanBuy[1] = False;
+			Net_Bought[2] = False;
+			Net_SecWpn = 1;
 		}	
 		else if(Net_Cash - Net_ShopBill < ShopPrices[2])
 		{
 			L_Buy2.Show();
 			L_Buy2.SetText(TL::Compose(_("$f90Need %1$$"), TL::ToText(ShopPrices[2] - Net_Cash+ Net_ShopBill)));
 			B_Buy2.Hide();
-			CanBuy[1] = False;
 		}	
 		else
 		{
+			B_Buy2.Show();
 			B_Buy2.SetText("Buy ("^ShopPrices[2]^"$$)");
 			L_Buy2.Hide();
-			CanBuy[1] = True;
 		}	
-		
+		// Electric Pistol
 		if(Net_Bought[2])
 		{
 			B_Buy3.Hide();
 			L_Buy3.Show();
 			L_Buy3.SetText("$9f0Bought");
-			CanBuy[2] = False;
+			Net_Bought[1] = False;
+			Net_SecWpn = 2;
 		}	
 		else if(Net_Cash - Net_ShopBill < ShopPrices[3])
 		{
 			L_Buy3.Show();
 			L_Buy3.SetText(TL::Compose(_("$f90Need %1$$"), TL::ToText(ShopPrices[3]- Net_Cash + Net_ShopBill)));
 			B_Buy3.Hide();
-			CanBuy[2] = False;
 		}	
 		else
 		{
+			B_Buy3.Show();
 			B_Buy3.SetText("Buy ("^ShopPrices[3]^"$$)");
 			L_Buy3.Hide();
-			CanBuy[2] = True;
 		}
-
+		// Plasma Gun
 		if(Net_Bought[3])
 		{
 			B_Buy4.Hide();
 			L_Buy4.Show();
 			L_Buy4.SetText("$9f0Bought");
-			CanBuy[3] = False;
+			Net_PrimWpn = 3;
+			
 		}	
 		else if(Net_Cash - Net_ShopBill < ShopPrices[4])
 		{
 			L_Buy4.Show();
 			L_Buy4.SetText(TL::Compose(_("$f90Need %1$$"), TL::ToText(ShopPrices[4] - Net_Cash + Net_ShopBill)));
 			B_Buy4.Hide();
-			CanBuy[3] = False;
 		}	
 		else
 		{
+			B_Buy4.Show();
 			B_Buy4.SetText("Buy ("^ShopPrices[4]^"$$)");
 			L_Buy4.Hide();
-			CanBuy[3] = True;
 		}
 
 		if(Net_Bought[4])
@@ -2490,20 +3065,19 @@ main()
 			B_Buy5.Hide();
 			L_Buy5.Show();
 			L_Buy5.SetText("$9f0Bought");
-			CanBuy[4] = False;
+			Net_PrimWpn = 4;
 		}	
 		else if(Net_Cash - Net_ShopBill < ShopPrices[5])
 		{
 			L_Buy5.Show();
 			L_Buy5.SetText(TL::Compose(_("$f90Need %1$$"), TL::ToText(ShopPrices[5] - Net_Cash + Net_ShopBill)));
 			B_Buy5.Hide();
-			CanBuy[4] = False;
 		}	
 		else
 		{
+			B_Buy5.Show();
 			B_Buy5.SetText("Buy ("^ShopPrices[5]^"$$)");
 			L_Buy5.Hide();
-			CanBuy[4] = True;
 		}
 
 		if(Net_Bought[5])
@@ -2511,20 +3085,19 @@ main()
 			B_Buy6.Hide();
 			L_Buy6.Show();
 			L_Buy6.SetText("$9f0Bought");
-			CanBuy[5] = False;
+			Net_PrimWpn = 5;
 		}	
 		else if(Net_Cash - Net_ShopBill < ShopPrices[6])
 		{
 			L_Buy6.Show();
 			L_Buy6.SetText(TL::Compose(_("$f90Need %1$$"), TL::ToText(ShopPrices[6] - Net_Cash + Net_ShopBill)));
 			B_Buy6.Hide();
-			CanBuy[5] = False;
 		}	
 		else
 		{
+			B_Buy6.Show();
 			B_Buy6.SetText("Buy ("^ShopPrices[6]^"$$)");
 			L_Buy6.Hide();
-			CanBuy[5] = True;
 		}
 
 		if(Net_Bought[6])
@@ -2532,20 +3105,19 @@ main()
 			B_Buy7.Hide();
 			L_Buy7.Show();
 			L_Buy7.SetText("$9f0Bought");
-			CanBuy[6] = False;
+			Net_PrimWpn = 6;
 		}	
 		else if(Net_Cash - Net_ShopBill < ShopPrices[7])
 		{
 			L_Buy7.Show();
 			L_Buy7.SetText(TL::Compose(_("$f90Need %1$$"), TL::ToText(ShopPrices[7] - Net_Cash + Net_ShopBill)));
 			B_Buy7.Hide();
-			CanBuy[6] = False;
 		}	
 		else
 		{
+			B_Buy7.Show();
 			B_Buy7.SetText("Buy ("^ShopPrices[7]^"$$)");
 			L_Buy7.Hide();
-			CanBuy[6] = True;
 		}
 
 		if(Net_Bought[7])
@@ -2553,20 +3125,19 @@ main()
 			B_Buy8.Hide();
 			L_Buy8.Show();
 			L_Buy8.SetText("$9f0Bought");
-			CanBuy[7] = False;
+			Net_PrimWpn = 7;
 		}	
 		else if(Net_Cash - Net_ShopBill < ShopPrices[8])
 		{
 			L_Buy8.Show();
 			L_Buy8.SetText(TL::Compose(_("$f90Need %1$$"), TL::ToText(ShopPrices[8] - Net_Cash + Net_ShopBill)));
 			B_Buy8.Hide();
-			CanBuy[7] = False;
 		}	
 		else
 		{
+			B_Buy8.Show();
 			B_Buy8.SetText("Buy ("^ShopPrices[8]^"$$)");
 			L_Buy8.Hide();
-			CanBuy[7] = True;
 		}
 
 		if(Net_Bought[8])
@@ -2574,27 +3145,26 @@ main()
 			B_Buy9.Hide();
 			L_Buy9.Show();
 			L_Buy9.SetText("$9f0Bought");
-			CanBuy[8] = False;
+			Net_PrimWpn = 8;
 		}	
 		else if(Net_Cash - Net_ShopBill < ShopPrices[9])
 		{
 			L_Buy9.Show();
 			L_Buy9.SetText(TL::Compose(_("$f90Need %1$$"), TL::ToText(ShopPrices[9] - Net_Cash + Net_ShopBill)));
 			B_Buy9.Hide();
-			CanBuy[8] = False;
 		}	
 		else
 		{
+			B_Buy9.Show();
 			B_Buy9.SetText("Buy ("^ShopPrices[9]^"$$)");
 			L_Buy9.Hide();
-			CanBuy[8] = True;
 		}
 		// Shields, If you buy 3 shields, then you shouldn't get access to 1 armor option
 		if(Net_Bought[10])
 		{
 			B_Buy10.Hide();
 			L_Buy10.Hide();
-			CanBuy[9] = False;
+			Net_Bought[9] = False;
 		}
 		else
 		{
@@ -2603,20 +3173,18 @@ main()
 				B_Buy10.Hide();
 				L_Buy10.Show();
 				L_Buy10.SetText("$9f0Bought");
-				CanBuy[9] = False;
 			}	
 			else if(Net_Cash - Net_ShopBill < ShopPrices[10])
 			{
 				L_Buy10.Show();
 				L_Buy10.SetText(TL::Compose(_("$f90Need %1$$"), TL::ToText(ShopPrices[10] - Net_Cash + Net_ShopBill)));
 				B_Buy10.Hide();	
-				CanBuy[9] = False;
 			}	
 			else
 			{
+				B_Buy10.Show();
 				B_Buy10.SetText("Buy ("^ShopPrices[10]^"$$)");
 				L_Buy10.Hide();
-				CanBuy[9] = True;
 			}
 		}	
 
@@ -2625,20 +3193,18 @@ main()
 			B_Buy11.Hide();
 			L_Buy11.Show();
 			L_Buy11.SetText("$9f0Bought");
-			CanBuy[10] = False;
 		}	
 		else if(Net_Cash - Net_ShopBill < ShopPrices[11])
 		{
 			L_Buy11.Show();
 			L_Buy11.SetText(TL::Compose(_("$f90Need %1$$"), TL::ToText(ShopPrices[11] - Net_Cash + Net_ShopBill)));
 			B_Buy11.Hide();
-			CanBuy[10] = False;
 		}	
 		else
 		{
+			B_Buy11.Show();
 			B_Buy11.SetText("Buy ("^ShopPrices[11]^"$$)");
 			L_Buy11.Hide();
-			CanBuy[10] = True;
 		}
 
 		foreach (Event in PendingEvents) 
@@ -2647,59 +3213,93 @@ main()
 			{
 				case CMlEvent::Type::MouseClick: 
 				{
-					if(Event.ControlId == "B_buy1" && CanBuy[0])
+					if(Event.ControlId == "B_buy1")
 					{
 						Net_Bought[0] = True;
 						Net_ShopBill += ShopPrices[1];
 					}	
-					if(Event.ControlId == "B_buy2" && CanBuy[1])
+					if(Event.ControlId == "B_buy2")
 					{
 						Net_Bought[1] = True; 
+						Net_Bought[2] = False;
 						Net_ShopBill += ShopPrices[2];
 					}	
-					if(Event.ControlId == "B_buy3" && CanBuy[2])
+					if(Event.ControlId == "B_buy3")
 					{
 						Net_Bought[2] = True;
+						Net_Bought[1] = False;
 						Net_ShopBill += ShopPrices[3];
 					}	
-					if(Event.ControlId == "B_buy4" && CanBuy[3])
+					if(Event.ControlId == "B_buy4")
 					{
 						Net_Bought[3] = True;
+						Net_Bought[4] = False;
+						Net_Bought[5] = False;
+						Net_Bought[6] = False;
+						Net_Bought[7] = False;
+						Net_Bought[8] = False;
 						Net_ShopBill += ShopPrices[4];
 					}	
-					if(Event.ControlId == "B_buy5" && CanBuy[4])
+					if(Event.ControlId == "B_buy5")
 					{
 						Net_Bought[4] = True;
+						Net_Bought[3] = False;
+						Net_Bought[5] = False;
+						Net_Bought[6] = False;
+						Net_Bought[7] = False;
+						Net_Bought[8] = False;
 						Net_ShopBill += ShopPrices[5];
 					}	
-					if(Event.ControlId == "B_buy6" && CanBuy[5])
+					if(Event.ControlId == "B_buy6")
 					{
 						Net_Bought[5] = True;
+						Net_Bought[3] = False;
+						Net_Bought[4] = False;
+						Net_Bought[6] = False;
+						Net_Bought[7] = False;
+						Net_Bought[8] = False;
 						Net_ShopBill += ShopPrices[6];
 					}	
-					if(Event.ControlId == "B_buy7" && CanBuy[6]) 
+					if(Event.ControlId == "B_buy7") 
 					{
 						Net_Bought[6] = True;
+						Net_Bought[3] = False;
+						Net_Bought[4] = False;
+						Net_Bought[5] = False;
+						Net_Bought[7] = False;
+						Net_Bought[8] = False;
 						Net_ShopBill += ShopPrices[7];
 					}	
-					if(Event.ControlId == "B_buy8" && CanBuy[7])
+					if(Event.ControlId == "B_buy8")
 					{
 						Net_Bought[7] = True;
+						Net_Bought[3] = False;
+						Net_Bought[4] = False;
+						Net_Bought[5] = False;
+						Net_Bought[6] = False;
+						Net_Bought[8] = False;
 						Net_ShopBill += ShopPrices[8];
 					}	
-					if(Event.ControlId == "B_buy9" && CanBuy[8])
+					if(Event.ControlId == "B_buy9")
 					{
 						Net_Bought[8] = True;
+						Net_Bought[3] = False;
+						Net_Bought[4] = False;
+						Net_Bought[5] = False;
+						Net_Bought[6] = False;
+						Net_Bought[7] = False;
 						Net_ShopBill += ShopPrices[9];
 					}	
-					if(Event.ControlId == "B_buy10" && CanBuy[9])
+					if(Event.ControlId == "B_buy10")
 					{
 						Net_Bought[9] = True;
+						Net_Bought[10] = False;
 						Net_ShopBill += ShopPrices[10];
 					}	
-					if(Event.ControlId == "B_buy11" && CanBuy[10])
+					if(Event.ControlId == "B_buy11")
 					{
 						Net_Bought[10] = True;
+						Net_Bought[9] = True;
 						Net_ShopBill += ShopPrices[11];
 					}	
 				}
@@ -2710,8 +3310,8 @@ main()
 --></script>
 <frame>
 	<quad posn="0 -5 0" sizen="220 154" image="{{{C_ImgModeDir}}}/bigboard-center.dds" halign="center" valign="center"/>
-	<label posn="0 56 1" sizen="50 11" textid="shop" halign="center" valign="top" style="TextButtonNav" textsize="9"/>
-	<label posn="0 37 1" sizen="57 9" text="$8a00$f90 $$" textsize="6" style="BgMainMenuTitleHeader" halign="center" valign="bottom" id="L_Cash"/>
+	<label posn="0 56 1" sizen="50 11" textid="shop" halign="center" valign="top" style="TextButtonNav" textsize="8"/>
+	<label posn="0 37 1" sizen="57 9" text="0$9f0 $$" textsize="7" style="BgMainMenuTitleHeader" halign="center" valign="bottom" id="L_Cash"/>
 	<label posn="-102 57 1" sizen="56 5" text="{{{TextLib::Compose(_("Round %1"), TextLib::ToText(MB_SectionRoundNb))}}}"/>
 	<label posn="-102 50 1" sizen="61 5" text="{{{TextLib::Compose(_("|Imperative|Attack"))}}}: {{{Teams[G_AttackingClan-1].ColorizedName}}}"/>
 	<label posn="-102 43 1" sizen="61 5" text="{{{TextLib::Compose(_("|Imperative|Defend"))}}}: {{{Teams[3-G_AttackingClan-1].ColorizedName}}}"/>
@@ -2733,11 +3333,12 @@ main()
 	</frame>
 	<quad posn="-102 36 1" sizen="204 1" bgcolor="CCC7"/>
 	<quad posn="-47 -42 1" sizen="149 1" bgcolor="CCC7"/>
-	<quad posn="-48 35 1" sizen="1 103" bgcolor="CCC7"/>
+	<quad posn="-48 35 1" sizen="1 102" bgcolor="CCC7"/>
 	<quad posn="-101 -10 1" sizen="54 1" bgcolor="CCC7"/>
 	<label posn="25 27 0" sizen="111 5" textid="primary" style="TextButtonNav" halign="center" valign="center" textsize="3"/>
 	<label posn="-76 30 0" sizen="48 5" textid="sec" style="TextButtonNav" halign="center" valign="center" textsize="2"/>
-	<label posn="-76 -15 0" sizen="48 5" textid="abi" style="TextButtonNav" halign="center" valign="center" textsize="2"/>
+	<label posn="-76 -14 0" sizen="48 5" textid="abi" style="TextButtonNav" halign="center" valign="center" textsize="2"/>
+	<label posn="-76 -17 0" sizen="48 5" scale="0.7" textcolor="bbb" textid="abitip" style="TextButtonNav" halign="center" valign="center" textsize="1"/>
 	<frame posn="-103 2 1" id="Frame_BRocket">
 		<quad posn="27 16 0" sizen="50 16" bgcolor="FFFA" style="EnergyBar" substyle="EnergyBar" halign="center" valign="center"/>
 		<quad posn="12 16 1" sizen="12 12" bgcolor="FFFA" image="{{{C_ImgModeDir}}}/IconWeaponBRocket.dds" halign="center" valign="center"/>
@@ -2852,7 +3453,7 @@ Void UpdateHeader(Integer _Clan1Points, Integer _Clan2Points)
 Void UpdateSTFooter()
 {
 	ST2::SetFooterText(TextLib::Compose(_("Round: %1 | Points to win: %2 | Attacking: %3"), TextLib::ToText(MB_SectionRoundNb), TextLib::ToText(G_MapPointsLimit), Teams[G_AttackingClan-1].ColorizedName));
-	ModeStatusMessage = TextLib::Compose(_("RULES: Locate vulnerable point and do overload to win the round.\nRound $9f0%1$g Score: $<%2%3$>:$<%4%5$>"), TextLib::ToText(MB_SectionRoundNb), Teams[0].ColorText, TextLib::ToText(G_ClansMapPoints[1]), Teams[1].ColorText, TextLib::ToText(G_ClansMapPoints[2]));
+	ModeStatusMessage = TextLib::Compose(_("RULES: Locate vulnerable point and do overload to win the round.\nRound $9f0%1$g | Score: %2:$3"), TextLib::ToText(MB_SectionRoundNb), TextLib::ToText(G_ClansMapPoints[1]), TextLib::ToText(G_ClansMapPoints[2]));
 }	
 
 Void AnnounceHitDistance(Real _Distance, CSmPlayer _Player)
@@ -2962,7 +3563,7 @@ Void AnnounceEliminationMessage(Integer _ClanNb, Integer _LeftPlayers)
 			}
 			Message::SendStatusMessage(Spectator, TextLib::Compose(_("%1: %2"),Teams[_ClanNb].ColorizedName, MSG), 4000, 0, Sound, 0);
 		}
-		Sound::PlaySound("file://Media/Sounds/FireFight/lastman.ogg", -8., 300);
+		//Sound::PlaySound("file://Media/Sounds/FireFight/lastman.ogg", -8., 300);
 	}
 	else
 	{
