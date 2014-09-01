@@ -407,8 +407,8 @@ Text Private_UpdateLayerPlayers()
 	
 	
 	for (I, 0, 15) {
-		Panels[1] ^= """<frameinstance posn="0 {{{-I*5.3}}}" modelid="Framemodel_ArmorsLeft" id="Frame_PlayerArmors_{{{I+1}}}" />""";
-		Panels[2] ^= """<frameinstance posn="0 {{{-I*5.3}}}" modelid="Framemodel_ArmorsRight" id="Frame_PlayerArmors_{{{I+1}}}" />""";
+		Panels[1] ^= """<frameinstance posn="0 {{{-I*4.3}}}" modelid="Framemodel_ArmorsLeft" id="Frame_PlayerArmors_{{{I+1}}}" />""";
+		Panels[2] ^= """<frameinstance posn="0 {{{-I*4.3}}}" modelid="Framemodel_ArmorsRight" id="Frame_PlayerArmors_{{{I+1}}}" />""";
 	}
 	
 	declare Team1Name 	= Teams[0].ColorizedName;
@@ -440,6 +440,9 @@ Text Private_UpdateLayerPlayers()
 	<quad posn="-30.5 -3 3" halign="right" sizen="3 3" image="{{{ArmorImage}}}" />
 	<label posn="-35 -3 3" halign="right" style="TextRaceChrono" textsize="2" id="Label_ArmorsLeft" />
 </frame>
+</frame>
+<frame posn="158 -84">
+	<label halign="right" style="CardButtonSmallS" text="Post feedback" scriptevents="1" url="http://forum.maniaplanet.com/viewtopic.php?f=10&t=28177&start=0" />
 </frame>
 <script><!--
 #Include "TextLib" as TL
@@ -911,7 +914,7 @@ Void LT_AnnounceEliminationMessage(Integer _ClanNb, Integer _LeftPlayers)
 			}
 			Message::SendStatusMessage(Spectator, TextLib::Compose(_("%1: %2"),Teams[_ClanNb].ColorizedName, MSG), 4000, 0, Sound, 0);
 		}
-		Sound::PlaySound("file://Media/Sounds/FireFight/lastman.ogg", -8., 300);
+		//Sound::PlaySound("file://Media/Sounds/FireFight/lastman.ogg", -8., 300);
 	}
 	else
 	{
