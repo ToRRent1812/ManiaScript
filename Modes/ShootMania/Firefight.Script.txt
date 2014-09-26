@@ -1,12 +1,11 @@
-#Extends "Modes/Shootmania/LoadoutsTools.Script.txt"
+#Extends "Modes/Shootmania/LoadoutsCore.Script.txt"
 
 #Const CompatibleMapTypes	"FirefightArena"
-#Const Version				"2014-08-17"
+#Const Version				"2014-09-21"
 #Const ScriptName			"Firefight.Script.txt"
 
 #Include "MathLib" as MathLib
 #Include "TextLib" as TextLib
-//#Include "Libs/Vote.Script.txt" as Draft
 #Include "Libs/MiniMap2.Script.txt" as MiniMap
 //#Include "Libs/Nadeo/Layers2.Script.txt" as Layers
 //#Include "Libs/Nadeo/Message.Script.txt" as Message
@@ -24,7 +23,7 @@
 /*#Setting S_MapPointsLimit		5		as _("Number of rounds to make half-time")
 #Setting S_ClassSelectionTime	18		as _("Time to choose basic loadout before round")
 #Setting S_FinalRoundExceptDraw	False	as _("Use additional round to determine map winner")*/
-#Setting S_PlayerArmor 			5 		as _("Number of armors per player")
+#Setting S_PlayerArmor 			3 		as _("Number of armors per player")
 #Setting S_ObjectDetector		40 		as _("Objects markers detection distance (0 to disable)")
 #Setting S_ItemSpawnTime		45 		as _("Number of seconds to spawn items after pick-up")
 #Setting S_BlueBot 				0 		as _("Number of blue test bots")
@@ -37,15 +36,6 @@
 
 // XML-RPC default layers positions
 #Const C_LayerProgressionPosition	<131., 125., 0.>
-
-#Const C_Object [
-	"Laser"			=> "Laser",
-	"PlasmaGun"		=> "PlasmaGun",
-	"Grenades"		=> "Grenades",
-	"Nucleus"		=> "Nucleus",
-	"Shotgun"		=> "Shotgun",
-	"BlowBomb"		=> "BlowBomb"
-]
 
 #Const Description  _("RULES:\n- Control 3 zones of goals or eliminate all enemies to win the round.\n- Controlled zone can be stolen by the opposing team.\n- Capture objectives to revive teammates and heal yourself (2 armors).\n- Before round You can pick 1 of 3 secondary weapon.\n- Find weapon items on map to collect primary weapon.")
 
@@ -74,14 +64,6 @@ declare Integer 					G_ObjectDetector;
 declare Integer 					G_BlueBot;
 declare Integer 					G_RedBot;
 
-declare Ident[Text] 				G_ObjectId;				// Ids of the objects
-declare Ident 						G_CustomBounceRocket;
-declare Ident 						G_CustomGrenades;
-declare Ident 						G_CustomPlasmaGun;
-declare Ident 						G_CustomElectricPistol;
-declare Ident 						G_CustomShotgun;
-declare Ident 						G_CustomBlowBomb;
-
 declare Integer[Integer] 			G_PlayerCountA;
 declare Integer[Integer] 			G_PlayerCountB;
 declare Integer[Integer] 			G_PlayerCountC;
@@ -93,10 +75,7 @@ MB_LogVersion(SM::GetScriptName(), SM::GetScriptVersion());
 MB_LogVersion(Map::GetScriptName(), Map::GetScriptVersion());
 MB_LogVersion(CustomUI::GetScriptName(), CustomUI::GetScriptVersion());
 MB_LogVersion(Score::GetScriptName(), Score::GetScriptVersion());
-//MB_LogVersion(Layers::GetScriptName(), Layers::GetScriptVersion());
-//MB_LogVersion(Message::GetScriptName(), Message::GetScriptVersion());
 MB_LogVersion(SpawnScreen::GetScriptName(), SpawnScreen::GetScriptVersion());
-//MB_LogVersion(Draft::GetScriptName(), Draft::GetScriptVersion());
 ***
 
 ***InitServer***
@@ -151,8 +130,8 @@ ModeStatusMessage = _("RULES:\n- Control 3 zones of goals or eliminate all enemi
 SM::SetupDefaultVisibility();
 
 CustomUI::Load();
-CustomUI::Add("FireFight_PlayersList_1", <-160., 67.>, <46., 90.>, "top", "left");
-CustomUI::Add("FireFight_PlayersList_2", <160., 67.>, <46., 90.>, "top", "right");
+CustomUI::Add("PlayersList_1", <-160., 67.>, <46., 90.>, "top", "left");
+CustomUI::Add("PlayersList_2", <160., 67.>, <46., 90.>, "top", "right");
 CustomUI::Add("FireFight_GaugeCapture", <0., -45.>, <130., 20.>, "center", "center");
 CustomUI::Build();
 MiniMap::Load();
@@ -170,26 +149,6 @@ Layers::SetType("RulesReminder", CUILayer::EUILayerType::CutScene);
 //Layers::SetType("SpawnScreenMap", CUILayer::EUILayerType::ScreenIn3d);
 Layers::Attach("RulesReminder");
 //CreateSpawnScreenMap();
-
-// Init Actions
-ActionList_Begin();
-G_CustomBounceRocket 				= ActionList_Add("BRocket.Action.Gbx");
-G_CustomPlasmaGun					= ActionList_Add("PlasmaGun.Action.Gbx");
-G_CustomGrenades 					= ActionList_Add("Grenades.Action.Gbx");
-G_CustomElectricPistol 				= ActionList_Add("ElectricPistol.Action.Gbx");
-G_CustomShotgun 					= ActionList_Add("Shotgun.Action.Gbx");
-G_CustomBlowBomb 					= ActionList_Add("BlowBomb.Action.Gbx");
-ActionList_End();
-
-// Init Items
-ItemList_Begin();
-G_ObjectId[C_Object["Laser"]]		= ItemList_Add("PickUpFF/Laser.Item.gbx");
-G_ObjectId[C_Object["PlasmaGun"]]	= ItemList_Add("PickUpFF/PlasmaGun.Item.gbx");
-G_ObjectId[C_Object["Grenades"]]	= ItemList_Add("PickUpFF/Grenades.Item.gbx");
-G_ObjectId[C_Object["Nucleus"]]		= ItemList_Add("PickUpFF/Nucleus.Item.gbx");
-G_ObjectId[C_Object["Shotgun"]]		= ItemList_Add("PickUpFF/Shotgun.Item.gbx");
-G_ObjectId[C_Object["BlowBomb"]]	= ItemList_Add("PickUpFF/BlowBomb.Item.gbx");
-ItemList_End();
 
 // Init scores table
 ST2::SetStyle("LibST_SMBaseTeams");
@@ -231,7 +190,7 @@ MB_UseIntro = True;
 
 ***StartMap***
 ***
-//assert(MapType::GetVersion() == 2, _("Outdated map! If you are map creator, check rules of the map."));
+assert(Map::GetMapTypeVersion() == 2, "Wrong map version.");
 UIManager.UIAll.MarkersXML = "";
 UIManager.UIAll.ScreenIn3dHideVersus = False;
 UIManager.UIAll.ScreenIn3dHideScoreSummary = False;
@@ -309,7 +268,7 @@ Mode::Synchro_DoBarrier();
 UIManager.UIAll.ScoreTableVisibility = CUIConfig::EVisibility::Normal;
 Victory::RoundBegin();
 Score::RoundBegin();
-LT_UpdateSTFooter();
+LT_UpdateSTFooter(G_ClansMapPoints[1], G_ClansMapPoints[2]);
 InitGoals();
 InitSpawns();
 // If this is the first round and turn on the map, launch the players presentation
@@ -403,7 +362,6 @@ Layers::Update("Progression", UpdateLayerProgression(0));
 Layers::Attach("Progression");
 Layers::Update("ProgressBar", UpdateLayerProgressBar());
 Layers::Attach("ProgressBar");
-LT_ShowPlayersLists();
 Layers::Attach("Markers");
 Layers::Update("HUD", UpdateLayerHUD());
 Layers::Attach("HUD");
@@ -423,7 +381,6 @@ if (UI != Null)
 	UI.SpectatorForcedClan		= Player.CurrentClan;
 	UI.SpectatorForceCameraType	= 1;
 	Layers::Attach("Progression", Player);
-	LT_UpdatePlayersLists();
 	declare CurrentCapGoals for Player.Score = 0;
 	declare CurrentMVP for Player.Score = 0;
 	declare SpawnArmor for Player = 100;
@@ -441,7 +398,7 @@ if (UI != Null) {
 	UI.SpectatorForcedClan		= -1;
 	UI.SpectatorForceCameraType	= -1;
 	Layers::Attach("Progression", Spectator);
-	LT_AttachPlayersLists(Spectator);
+	Layers::Attach("Players", Spectator);
 }
 declare SpawnTicket for Spectator = 100;
 SpawnTicket = 0;
@@ -497,12 +454,12 @@ if(G_LastSettingsUpdate + 2000 < Now)
 		if(S_MapPointsLimit < 1)
 		{
 			G_MapPointsLimit = 1;
-			LT_UpdateSTFooter();
+			LT_UpdateSTFooter(G_ClansMapPoints[1], G_ClansMapPoints[2]);
 		}	
 		else
 		{
 			G_MapPointsLimit = S_MapPointsLimit;
-			LT_UpdateSTFooter();
+			LT_UpdateSTFooter(G_ClansMapPoints[1], G_ClansMapPoints[2]);
 		}
 	}		
 
@@ -538,7 +495,7 @@ foreach (Player in Players) {
 	{
 		declare NewSpectator for Player = False;
 		NewSpectator = True;
-		LT_DetachWeaponSelection(Player);
+		Layers::Detach("WeaponSelection", Player);
 	}
 }
 
@@ -565,7 +522,11 @@ if(RoundClanWinner == 0)
 			declare SpawnArmor for Player = 100;
 			if (SpawnArmor < 100) SpawnArmor = 100;
 			if (SpawnArmor > Player.ArmorMax) SpawnArmor = Player.ArmorMax;
-			if (Player.CurrentClan != 1 && Player.CurrentClan != 2) SetPlayerClan(Player, Player.RequestedClan);
+			if (Player.CurrentClan != 1 && Player.CurrentClan != 2)
+			{
+				SetPlayerClan(Player, Player.RequestedClan);
+				SpawnTicket = 1;
+			}
 			if (Player.RequestedClan == 1 && SpawnArmor > 0)
 			{
 				declare SpawnId = NullId;
@@ -655,7 +616,7 @@ if(RoundClanWinner == 0)
 					Player.Armor = SpawnArmor;
 					Player.ArmorMax = SpawnArmor;
 				}
-				else log(Now^">Wrong map, check spawn tags");	
+				else MB_Log("Wrong map, check spawn tags");	
 			}
 			else if (Player.RequestedClan == 2 && SpawnArmor > 0)
 			{
@@ -745,7 +706,7 @@ if(RoundClanWinner == 0)
 					Player.Armor = SpawnArmor;
 					Player.ArmorMax = SpawnArmor;
 				}
-				else log(Now^">Wrong map, missing Spawn2");
+				else MB_Log("Wrong map, check spawn tags");
 			}
 		}
 	}		
@@ -768,7 +729,6 @@ if (G_RoundTime > 0)
 		Message::CleanBigMessages();
 		Message::SendBigMessage(TextLib::Compose(_("Time limit reached!")), 4000, 0);
 		Layers::Update("Progression", UpdateLayerProgression(0));
-		LT_HidePlayersLists();
 		declare Integer Points1 = 0;
 		declare Integer Points2 = 0;
 		switch(G_ZoneClanList[1])
@@ -839,45 +799,48 @@ foreach (LandmarkGauge in MapLandmarks_Gauge)
 {
 	if(LandmarkGauge.Sector != Null)
 	{
-		if(LandmarkGauge.Tag == "Zone A")
+		switch(LandmarkGauge.Tag)
 		{
-			if (LandmarkGauge.Sector.PlayersIds.count > 0) 
-			{
-				foreach (PlayerId in LandmarkGauge.Sector.PlayersIds) 
+			case "Zone A":
+			{	
+				if (LandmarkGauge.Sector.PlayersIds.count > 0) 
 				{
-					declare Player <=> Players[PlayerId];
-					if (FirstOnGoal != NullId && !LandmarkGauge.Sector.PlayersIds.exists(FirstOnGoal) && LandmarkGauge.Gauge.ValueReal != 0.) FirstOnGoal = NullId;
-					if (FirstOnGoal == NullId) FirstOnGoal = PlayerId;
-					PlayerCountA[Player.CurrentClan] += 1;
+					foreach (PlayerId in LandmarkGauge.Sector.PlayersIds) 
+					{
+						declare Player <=> Players[PlayerId];
+						if (FirstOnGoal != NullId && !LandmarkGauge.Sector.PlayersIds.exists(FirstOnGoal) && LandmarkGauge.Gauge.ValueReal != 0.) FirstOnGoal = NullId;
+						if (FirstOnGoal == NullId) FirstOnGoal = PlayerId;
+						PlayerCountA[Player.CurrentClan] += 1;
+					}
 				}
 			}
-		}
-		if(LandmarkGauge.Tag == "Zone B")
-		{
-			if (LandmarkGauge.Sector.PlayersIds.count > 0) 
+			case "Zone B":
 			{
-				foreach (PlayerId in LandmarkGauge.Sector.PlayersIds) 
+				if (LandmarkGauge.Sector.PlayersIds.count > 0) 
 				{
-					declare Player <=> Players[PlayerId];
-					if (FirstOnGoal != NullId && !LandmarkGauge.Sector.PlayersIds.exists(FirstOnGoal) && LandmarkGauge.Gauge.ValueReal != 0.) FirstOnGoal = NullId;
-					if (FirstOnGoal == NullId) FirstOnGoal = PlayerId;
-					PlayerCountB[Player.CurrentClan] += 1;
+					foreach (PlayerId in LandmarkGauge.Sector.PlayersIds) 
+					{
+						declare Player <=> Players[PlayerId];
+						if (FirstOnGoal != NullId && !LandmarkGauge.Sector.PlayersIds.exists(FirstOnGoal) && LandmarkGauge.Gauge.ValueReal != 0.) FirstOnGoal = NullId;
+						if (FirstOnGoal == NullId) FirstOnGoal = PlayerId;
+						PlayerCountB[Player.CurrentClan] += 1;
+					}
 				}
 			}
-		}
-		if(LandmarkGauge.Tag == "Zone C")
-		{
-			if (LandmarkGauge.Sector.PlayersIds.count > 0) 
+			case "Zone C":
 			{
-				foreach (PlayerId in LandmarkGauge.Sector.PlayersIds) 
+				if (LandmarkGauge.Sector.PlayersIds.count > 0) 
 				{
-					declare Player <=> Players[PlayerId];
-					if (FirstOnGoal != NullId && !LandmarkGauge.Sector.PlayersIds.exists(FirstOnGoal) && LandmarkGauge.Gauge.ValueReal != 0.) FirstOnGoal = NullId;
-					if (FirstOnGoal == NullId) FirstOnGoal = PlayerId;
-					PlayerCountC[Player.CurrentClan] += 1;
+					foreach (PlayerId in LandmarkGauge.Sector.PlayersIds) 
+					{
+						declare Player <=> Players[PlayerId];
+						if (FirstOnGoal != NullId && !LandmarkGauge.Sector.PlayersIds.exists(FirstOnGoal) && LandmarkGauge.Gauge.ValueReal != 0.) FirstOnGoal = NullId;
+						if (FirstOnGoal == NullId) FirstOnGoal = PlayerId;
+						PlayerCountC[Player.CurrentClan] += 1;
+					}
 				}
 			}
-		}						
+		}					
 	}
 }
 
@@ -1295,208 +1258,202 @@ if(G_LastProgressUpdate + 750 < Now)
 	}
 }	
 
-// Spawn objects
-SpawnWeaponItems();	
-
 // Events
 foreach (Event in PendingEvents) 
 {
-	// On player touches object
-	if (Event.Type == CSmModeEvent::EType::OnPlayerTouchesObject)
+	switch(Event.Type)
 	{
-		if (Event.Player == Null) Discard(Event);
-		else if (Event.Player != Null && Event.Player.SpawnStatus != CSmPlayer::ESpawnStatus::Spawned) Discard(Event);
-		else 
+		case CSmModeEvent::EType::OnArmorEmpty:
 		{
-			PickUpObject(Event.Player, Event.Object);
-			PassOn(Event);
-		}
-	}
-	// On action event
-	else if (Event.Type == CSmModeEvent::EType::OnActionEvent) 
-	{
-		if (Event.Player == Null) Discard(Event);
-		else 
-		{
-			SwitchWeapon(Event.Player, Event.ActionInput);
-			PassOn(Event);
-		}		
-	}
-	// On player request action change
-	/*else if (Event.Type == CSmModeEvent::EType::OnPlayerRequestActionChange) {
-		if (Event.Player == Null) Discard(Event);
-		else {
-			CycleWeapon(Event.Player, Event.ActionChange);
-			PassOn(Event);
-		}
-	}*/
-	// Armor empty
-	else if (Event.Type == CSmModeEvent::EType::OnArmorEmpty && Event.Victim != Null) 
-	{
-		if (Event.Victim.Armor > 100)
-		{
-			declare SpawnArmor for Event.Victim = 100;
-			SpawnArmor = Event.Victim.Armor - 100;
-			declare SpawnTicket for Event.Victim = 0;
-			SpawnTicket = 1;
-		}
-		else
-		{
-			declare SpawnTicket for Event.Victim = 0;
-			SpawnTicket = 0;
-			if (G_PlayersAlive[Event.Victim.CurrentClan] > 1) 
+			if(Event.Victim == Null) Discard(Event);
+
+			if (Event.Victim.Armor > 100)
 			{
 				declare SpawnArmor for Event.Victim = 100;
-				SpawnArmor -= 100;
-
-				//Remove primary weapon after elimination
-				ActionBind(Event.Victim, CSmMode::EActionSlot::Slot_A, CSmMode::EActionInput::None);
-				SetPlayerAmmoMax(Event.Victim, CSmMode::EWeapon::Laser, 0);
-				SetPlayerAmmoMax(Event.Victim, CSmMode::EWeapon::Nucleus, 0);
-				Event.Victim.AmmoGain = 0.;
-				declare UI <=> UIManager.GetUI(Event.Victim);
-				if (UI != Null) 
-				{
-					declare netwrite Net_PrimaryWeapon for UI = 0;
-					Net_PrimaryWeapon = 0;
-				}
-				foreach(Player in Players)
-				{
-					declare UI <=> UIManager.GetUI(Player);
-					if (UI != Null) 
-					{
-						declare netwrite Integer[Text] Net_PrimaryWeapons for UI;
-						Net_PrimaryWeapons[Event.Victim.Login] = 0;
-					}
-				}
-
-				declare PLeft = G_PlayersAlive[Event.Victim.CurrentClan]-1;
-				if (PLeft <= 3) LT_AnnounceEliminationMessage(Event.Victim.CurrentClan-1, PLeft);
+				SpawnArmor = Event.Victim.Armor - 100;
+				declare SpawnTicket for Event.Victim = 0;
+				SpawnTicket = 1;
 			}
-		}	
-		XmlRpc::OnArmorEmpty(Event);
-		PassOn(Event);
-	}
-	// Damage
-	else if(Event.Type == CSmModeEvent::EType::OnHit && Event.Victim != Null) 
-	{
-		// Discard friendly fire
-		if (Event.Shooter != Null && Event.Shooter.CurrentClan == Event.Victim.CurrentClan) {
-			Discard(Event);
-		} 
-		else 
-		{
-			if(Event.WeaponNum == GetWeaponNum(CSmMode::EWeapon::Laser))
-			{
-				declare UI <=> UIManager.GetUI(Event.Shooter);
-				if(UI != Null)
-				{
-					// Get distance
-					declare Distance = MathLib::Distance(Event.Shooter.Position, Event.Victim.Position);
-					LT_AnnounceHitDistance(Distance, Event.Shooter);
-				}
-				Event.Damage = 200;
-				Event.ShooterPoints = 2;
-			}		
-			if (Event.Shooter != Event.Victim)
-			{
-				declare UI <=> UIManager.GetUI(Event.Shooter);
-				if (UI != Null) 
-				{
-					Score::AddPoints(Event.Shooter, Event.Damage/100);
-					---HeadshotFunctions---
-					---AnnounceHeadshot---
-				}
-				if(Event.Victim.Armor - Event.Damage <= 0)
-				{
-					declare SpawnTicket for Event.Victim = 0;
-					SpawnTicket = 0;
-				}		
-			}	
-			//declare SpawnArmor for Event.Victim = 0;
-			//SpawnArmor = Event.Victim.Armor - Event.Damage; 
-
-			XmlRpc::OnHit(Event);
-			PassOn(Event);
-		}
-	}
-	// Action Maker Events
-	else if(Event.Type == CSmModeEvent::EType::OnActionCustomEvent)
-	{
-		if(Event.Shooter == Null || Event.Victim == Null) Discard(Event);
-		// Discard friendly fire
-		if (Event.Param1 == "damage" && Event.Victim != Null && Event.Shooter != Null && Event.Shooter.CurrentClan == Event.Victim.CurrentClan) Discard(Event);
-		else if(Event.Param1 == "damage" && Event.Victim != Null && Event.Shooter != Null && Event.Victim != Event.Shooter) 
-		{
-			declare Damage = TextLib::ToInteger(Event.Param2[0]);
-           	declare Points = Damage / 100;
-			declare UI <=> UIManager.GetUI(Event.Shooter);
-			if (UI != Null) 
-			{
-				---HeadshotFunctions---
-				---ActionMakerAnnounceHeadshot---
-			}
-            RemovePlayerArmor(Event.Victim, Damage, Event.Shooter, Points);
-            Score::AddPoints(Event.Shooter, Points);
-          	if(Event.Victim.Armor - Damage <= 0)
+			else
 			{
 				declare SpawnTicket for Event.Victim = 0;
 				SpawnTicket = 0;
-			}	
-            PassOn(Event);
-        }  
-	}
-	// On near miss
-	else if(Event.Type == CSmModeEvent::EType::OnNearMiss && Event.Victim != Null) 
-	{
-		---OnNearMiss---
-	}
-	// Give Up
-	else if (Event.Type == CSmModeEvent::EType::OnPlayerRequestRespawn && Event.Player != Null) 
-	{
-		declare Message = "";
-		declare SpawnArmor for Event.Player = 100;
-		SpawnArmor = Event.Player.Armor - 200;
-		declare SpawnTicket for Event.Player = 0;
-		if(SpawnArmor >= 100) SpawnTicket = 1;
+				if (G_PlayersAlive[Event.Victim.CurrentClan] > 1) 
+				{
+					declare SpawnArmor for Event.Victim = 100;
+					SpawnArmor -= 100;
 
-		//Remove primary weapon after elimination
-		ActionBind(Event.Player, CSmMode::EActionSlot::Slot_A, CSmMode::EActionInput::None);
-		SetPlayerAmmoMax(Event.Player, CSmMode::EWeapon::Laser, 0);
-		SetPlayerAmmoMax(Event.Player, CSmMode::EWeapon::Nucleus, 0);
-		Event.Player.AmmoGain = 0.;
-		declare UI <=> UIManager.GetUI(Event.Player);
-		if (UI != Null) 
-		{
-			declare netwrite Net_PrimaryWeapon for UI = 0;
-			Net_PrimaryWeapon = 0;
+					//Remove primary weapon after elimination
+					ActionBind(Event.Victim, CSmMode::EActionSlot::Slot_A, CSmMode::EActionInput::None);
+					SetPlayerAmmoMax(Event.Victim, CSmMode::EWeapon::Laser, 0);
+					SetPlayerAmmoMax(Event.Victim, CSmMode::EWeapon::Nucleus, 0);
+					Event.Victim.AmmoGain = 0.;
+					declare UI <=> UIManager.GetUI(Event.Victim);
+					if (UI != Null) 
+					{
+						declare netwrite Net_PrimaryWeapon for UI = 0;
+						Net_PrimaryWeapon = 0;
+					}
+					foreach(Player in Players)
+					{
+						declare UI <=> UIManager.GetUI(Player);
+						if (UI != Null) 
+						{
+							declare netwrite Integer[Text] Net_PrimaryWeapons for UI;
+							Net_PrimaryWeapons[Event.Victim.Login] = 0;
+						}
+					}
+
+					declare PLeft = G_PlayersAlive[Event.Victim.CurrentClan]-1;
+					if (PLeft <= 3) LT_AnnounceEliminationMessage(Event.Victim.CurrentClan-1, PLeft);
+				}
+			}	
+			XmlRpc::OnArmorEmpty(Event);
+			PassOn(Event);
 		}
-		foreach(Player in Players)
+		case CSmModeEvent::EType::OnHit:
 		{
-			declare UI <=> UIManager.GetUI(Player);
-			if (UI != Null) 
+			if(Event.Victim == Null || Event.Shooter == Null) Discard(Event);
+
+			// Discard friendly fire
+			if (Event.Shooter != Null && Event.Shooter.CurrentClan == Event.Victim.CurrentClan) Discard(Event);
+			else 
 			{
-				declare netwrite Integer[Text] Net_PrimaryWeapons for UI;
-				Net_PrimaryWeapons[Event.Player.Login] = 0;
+				if(Event.WeaponNum == GetWeaponNum(CSmMode::EWeapon::Laser))
+				{
+					declare UI <=> UIManager.GetUI(Event.Shooter);
+					if(UI != Null)
+					{
+						// Get distance
+						declare Distance = MathLib::Distance(Event.Shooter.Position, Event.Victim.Position);
+						LT_AnnounceHitDistance(Distance, Event.Shooter);
+					}
+				}		
+				if (Event.Shooter != Event.Victim)
+				{
+					declare UI <=> UIManager.GetUI(Event.Shooter);
+					if (UI != Null) 
+					{
+						Score::AddPoints(Event.Shooter, Event.Damage/100);
+						---HeadshotFunctions---
+						---AnnounceHeadshot---
+					}
+					if(Event.Victim.Armor - Event.Damage <= 0)
+					{
+						declare SpawnTicket for Event.Victim = 0;
+						SpawnTicket = 0;
+					}		
+				}	
+				//declare SpawnArmor for Event.Victim = 0;
+				//SpawnArmor = Event.Victim.Armor - Event.Damage; 
+
+				XmlRpc::OnHit(Event);
+				PassOn(Event);
 			}
 		}
-		if(G_PlayersAlive[Event.Player.CurrentClan] > 1) 
+		case CSmModeEvent::EType::OnActionCustomEvent:
 		{
-			declare PLeft = G_PlayersAlive[Event.Player.CurrentClan];
-			if(PLeft <= 3) LT_AnnounceEliminationMessage(Event.Player.CurrentClan-1, PLeft);
-	 	}
+			if(Event.Shooter == Null || Event.Victim == Null) Discard(Event);
+			// Discard friendly fire
+			if (Event.Param1 == "damage" && Event.Victim != Null && Event.Shooter != Null && Event.Shooter.CurrentClan == Event.Victim.CurrentClan) Discard(Event);
+			else if(Event.Param1 == "damage" && Event.Victim != Null && Event.Shooter != Null && Event.Victim != Event.Shooter) 
+			{
+				declare Damage = TextLib::ToInteger(Event.Param2[0]);
+           		declare Points = Damage / 100;
+          	 	if(Damage < 100)
+				{
+					Points = 1;
+					Damage = 100;
+				}
+				declare UI <=> UIManager.GetUI(Event.Shooter);
+				if (UI != Null) 
+				{
+					---HeadshotFunctions---
+					---ActionMakerAnnounceHeadshot---
+				}
+           		RemovePlayerArmor(Event.Victim, Damage, Event.Shooter, Points);
+           	 	Score::AddPoints(Event.Shooter, Points);
+          		if(Event.Victim.Armor - Damage <= 0)
+				{
+					declare SpawnTicket for Event.Victim = 0;
+					SpawnTicket = 0;
+				}	
+           		PassOn(Event);
+        	}  
+		}
+		case CSmModeEvent::EType::OnPlayerRequestRespawn:
+		{
+			if(Event.Player == Null) Discard(Event);
 
-		XmlRpc::OnPlayerRequestRespawn(Event);
-		PassOn(Event);
-	} 
-	// Goal Captured
-	else if (Event.Type == CSmModeEvent::EType::OnCapture && Event.Landmark != Null) {
-		Discard(Event);
-	}
-	// Other events
-	else {
-		PassOn(Event);
-	}
+			declare Message = "";
+			declare SpawnArmor for Event.Player = 100;
+			SpawnArmor = Event.Player.Armor - 200;
+			declare SpawnTicket for Event.Player = 0;
+			if(SpawnArmor >= 100) SpawnTicket = 1;
+
+			//Remove primary weapon after elimination
+			ActionBind(Event.Player, CSmMode::EActionSlot::Slot_A, CSmMode::EActionInput::None);
+			SetPlayerAmmoMax(Event.Player, CSmMode::EWeapon::Laser, 0);
+			SetPlayerAmmoMax(Event.Player, CSmMode::EWeapon::Nucleus, 0);
+			Event.Player.AmmoGain = 0.;
+			declare UI <=> UIManager.GetUI(Event.Player);
+			if (UI != Null) 
+			{
+				declare netwrite Net_PrimaryWeapon for UI = 0;
+				Net_PrimaryWeapon = 0;
+			}
+			foreach(Player in Players)
+			{
+				declare UI <=> UIManager.GetUI(Player);
+				if (UI != Null) 
+				{
+					declare netwrite Integer[Text] Net_PrimaryWeapons for UI;
+					Net_PrimaryWeapons[Event.Player.Login] = 0;
+				}
+			}
+			if(G_PlayersAlive[Event.Player.CurrentClan] > 1) 
+			{
+				declare PLeft = G_PlayersAlive[Event.Player.CurrentClan];
+				if(PLeft <= 3) LT_AnnounceEliminationMessage(Event.Player.CurrentClan-1, PLeft);
+	 		}
+
+			XmlRpc::OnPlayerRequestRespawn(Event);
+			PassOn(Event);
+		}
+		case CSmModeEvent::EType::OnCapture: Discard(Event);
+		// Weapon switch via mouse scroll
+		case CSmModeEvent::EType::OnPlayerRequestActionChange: 
+		{
+			if (Event.Player == Null) Discard(Event);
+			else 
+			{
+				LT_CycleWeapon(Event.Player, Event.ActionChange);
+				PassOn(Event);
+			}
+		}
+		// On near miss
+		case CSmModeEvent::EType::OnNearMiss:
+		{
+			---OnNearMiss---
+		}
+		// When player touches object
+		case CSmModeEvent::EType::OnPlayerTouchesObject:
+		{
+			if(Event.Player == Null || Event.Player.SpawnStatus != CSmPlayer::ESpawnStatus::Spawned) Discard(Event);
+			
+			LT_PickUpObject(Event.Player, Event.Object);
+			PassOn(Event);
+		}
+		// Weapon switch via keyboard
+		case CSmModeEvent::EType::OnActionEvent: 
+		{
+			if(Event.Player == Null) Discard(Event);
+
+			LT_SwitchWeapon(Event.Player, Event.ActionInput);
+			PassOn(Event);
+		}
+		default: PassOn(Event);
+	}	
 }
 
 // Check end round conditions
@@ -1572,7 +1529,6 @@ else if(G_ZoneClanList[1] == 2 && G_ZoneClanList[2] == 2 && G_ZoneClanList[3] ==
 
 ***EndRound***
 ***
-LT_HidePlayersLists();
 Layers::Detach("Markers");
 Layers::Update("Progression", UpdateLayerProgression(0));
 // Search for MVP
@@ -1603,7 +1559,6 @@ EndTime = -1;
 if(RoundClanWinner > 0) G_ClansMapPoints[RoundClanWinner] += 1;
 Message::CleanAllMessages();
 Layers::Update("Progression", UpdateLayerProgression(1));
-LT_DetachPlayersLists();
 Layers::Detach("HUD");
 if(MB_SectionRoundNb % 3 == 0) DisplayNotice();
 LT_UpdateHeader(G_ClansMapPoints[1], G_ClansMapPoints[2]);
@@ -1723,7 +1678,6 @@ MB_Sleep(6000);
 UIManager.UIAll.UISequence = CUIConfig::EUISequence::Podium;
 MB_Sleep(6000);
 UIManager.UIAll.ScoreTableVisibility = CUIConfig::EVisibility::Normal;
-//LT_VoteMap(ClanMapWinner);
 Message::CleanAllMessages();
 ***
 
@@ -1731,7 +1685,6 @@ Message::CleanAllMessages();
 ***
 Layers::Destroy("Progression");
 Layers::Destroy("ProgressBar");
-LT_DestroyLoadoutsLayers();
 Layers::Destroy("RulesReminder");
 //Layers::Destroy("SpawnScreenMap");
 CustomUI::Unload();
@@ -1748,9 +1701,12 @@ Void InitGoals()
 	{
 		if(LandmarkGauge.Sector != Null)
 		{
-			if(LandmarkGauge.Tag == "Zone A") G_NbPolesA +=1;
-			else if(LandmarkGauge.Tag == "Zone B") G_NbPolesB +=1;
-			else if(LandmarkGauge.Tag == "Zone C") G_NbPolesC +=1;
+			switch(LandmarkGauge.Tag)
+			{
+				case "Zone A": G_NbPolesA +=1;
+				case "Zone B": G_NbPolesB +=1;
+				case "Zone C": G_NbPolesC +=1;
+			}
 		}
 	}		
 	
@@ -1758,37 +1714,39 @@ Void InitGoals()
 	{
 		if(LandmarkGauge.Sector != Null)
 		{
-			if(LandmarkGauge.Tag == "Zone A")
+			switch(LandmarkGauge.Tag)
 			{
-				declare Summary = (G_PoleCaptureDuration-1) + G_NbPolesA;
-				LandmarkGauge.Gauge.Max		= Summary * 3000;
-				LandmarkGauge.Gauge.Value	= LandmarkGauge.Gauge.Max;
-				LandmarkGauge.Gauge.Speed	= 0;
-				if(LT_IsAfterHalfTime()) LandmarkGauge.Gauge.Clan	= 2;
-				else LandmarkGauge.Gauge.Clan = 1;
-				LandmarkGauge.Gauge.Captured= True;
-			}
-			if(LandmarkGauge.Tag == "Zone B")
-			{
-				declare Summary = (G_PoleCaptureDuration-1) + G_NbPolesB;
-				LandmarkGauge.Gauge.Max		= Summary * 3000;
-				LandmarkGauge.Gauge.Value	= 0;
-				LandmarkGauge.Gauge.Speed	= 0;
-				LandmarkGauge.Gauge.Clan	= 0;
-				LandmarkGauge.Gauge.Captured= False;
-			}
-			if(LandmarkGauge.Tag == "Zone C")
-			{
-				declare Summary = (G_PoleCaptureDuration-1) + G_NbPolesC;
-				LandmarkGauge.Gauge.Max		= Summary * 3000;
-				LandmarkGauge.Gauge.Value	= LandmarkGauge.Gauge.Max;
-				LandmarkGauge.Gauge.Speed	= 0;
-				if(LT_IsAfterHalfTime()) LandmarkGauge.Gauge.Clan	= 1;
-				else LandmarkGauge.Gauge.Clan = 2;
-				LandmarkGauge.Gauge.Captured= True;
+				case "Zone A":
+				{
+					declare Summary = (G_PoleCaptureDuration-1) + G_NbPolesA;
+					LandmarkGauge.Gauge.Max		= Summary * 3000;
+					LandmarkGauge.Gauge.Value	= LandmarkGauge.Gauge.Max;
+					LandmarkGauge.Gauge.Speed	= 0;
+					if(LT_IsAfterHalfTime()) LandmarkGauge.Gauge.Clan	= 2;
+					else LandmarkGauge.Gauge.Clan = 1;
+					LandmarkGauge.Gauge.Captured= True;
+				}
+				case "Zone B":
+				{
+					declare Summary = (G_PoleCaptureDuration-1) + G_NbPolesB;
+					LandmarkGauge.Gauge.Max		= Summary * 3000;
+					LandmarkGauge.Gauge.Value	= 0;
+					LandmarkGauge.Gauge.Speed	= 0;
+					LandmarkGauge.Gauge.Clan	= 0;
+					LandmarkGauge.Gauge.Captured= False;
+				}
+				case "Zone C":
+				{
+					declare Summary = (G_PoleCaptureDuration-1) + G_NbPolesC;
+					LandmarkGauge.Gauge.Max		= Summary * 3000;
+					LandmarkGauge.Gauge.Value	= LandmarkGauge.Gauge.Max;
+					LandmarkGauge.Gauge.Speed	= 0;
+					if(LT_IsAfterHalfTime()) LandmarkGauge.Gauge.Clan	= 1;
+					else LandmarkGauge.Gauge.Clan = 2;
+					LandmarkGauge.Gauge.Captured= True;
+				}
 			}
 		}	
-
 	}
 }
 
@@ -1801,17 +1759,20 @@ Void InitSpawns()
 	declare Integer I = 0;
 	foreach (LandmarkPlayerSpawn in MapLandmarks_PlayerSpawn)
 	{
-		if (LandmarkPlayerSpawn.Tag == "Spawn1") 
+		switch(LandmarkPlayerSpawn.Tag)
 		{
-			G_SpawnList1.add(LandmarkPlayerSpawn.Id);
-			G_SpawnList[I] <=> LandmarkPlayerSpawn;
-			I+=1;
-		}
-		else if (LandmarkPlayerSpawn.Tag == "Spawn2")
-		{
-			G_SpawnList2.add(LandmarkPlayerSpawn.Id);
-			G_SpawnList[I] <=> LandmarkPlayerSpawn;
-			I+=1;
+			case "Spawn1":
+			{
+				G_SpawnList1.add(LandmarkPlayerSpawn.Id);
+				G_SpawnList[I] <=> LandmarkPlayerSpawn;
+				I+=1;
+			}
+			case "Spawn2":
+			{
+				G_SpawnList2.add(LandmarkPlayerSpawn.Id);
+				G_SpawnList[I] <=> LandmarkPlayerSpawn;
+				I+=1;
+			}
 		}		
 	}	
 }
@@ -1864,307 +1825,6 @@ Void UpdateBasesColors() {
 	}
 }
 
-Void SpawnWeaponItems() {
-	foreach (MapLandmark in MapLandmarks_ObjectAnchor) {
-		declare ObjectAnchor <=> MapLandmark.ObjectAnchor;
-		if (ObjectAnchor == Null) continue;
-		
-		declare ObjectSpawned for MapLandmark = False;
-		declare ObjectNextSpawn for MapLandmark = Now;
-		if (ObjectSpawned) continue;
-		if (ObjectNextSpawn > Now) continue;
-		
-		declare CSmObject Object;
-		switch (MapLandmark.Tag) {
-			case C_Object["Laser"]			: Object = ObjectCreate(G_ObjectId[C_Object["Laser"]]);
-			case C_Object["PlasmaGun"]		: Object = ObjectCreate(G_ObjectId[C_Object["PlasmaGun"]]);
-			case C_Object["Grenades"]		: Object = ObjectCreate(G_ObjectId[C_Object["Grenades"]]);
-			case C_Object["Nucleus"]		: Object = ObjectCreate(G_ObjectId[C_Object["Nucleus"]]);
-			case C_Object["Shotgun"]		: Object = ObjectCreate(G_ObjectId[C_Object["Shotgun"]]);
-			case C_Object["BlowBomb"]		: Object = ObjectCreate(G_ObjectId[C_Object["BlowBomb"]]);
-		}
-		if (Object != Null) {
-			declare AnchorId for Object = NullId;
-			declare Tag for Object = MapLandmark.Tag;
-			AnchorId = MapLandmark.Id;
-			Tag = MapLandmark.Tag;
-			ObjectSpawned = True;
-			Object.SetAnchor(ObjectAnchor);
-		}
-	}
-}
-
-Void PickUpWeapon(CSmPlayer _Player, Text _Weapon) 
-{
-	declare PrimaryWeapon for _Player = 1;
-	switch (_Weapon) 
-	{
-		case "Laser":
-		{
-			SetPlayerAmmoMax(_Player, CSmMode::EWeapon::Laser, 1);
-			SetPlayerAmmo(_Player, CSmMode::EWeapon::Laser, 1);
-			SetPlayerWeapon(_Player, CSmMode::EWeapon::Laser, False);
-			ActionBind(_Player, CSmMode::EActionSlot::Slot_A, CSmMode::EActionInput::None);
-			_Player.AmmoGain = 0.85;
-			PrimaryWeapon = 1;
-		}
-		case "PlasmaGun":
-		{
-			SetPlayerAmmoMax(_Player, CSmMode::EWeapon::Laser, 0);
-			SetPlayerAmmoMax(_Player, CSmMode::EWeapon::Nucleus, 0);
-			SetPlayerAmmoMax(_Player, CSmMode::EWeapon::Arrow, 0);
-			ActionLoad(_Player, CSmMode::EActionSlot::Slot_A, G_CustomPlasmaGun);
-			ActionBind(_Player, CSmMode::EActionSlot::Slot_A, CSmMode::EActionInput::Weapon);
-			PrimaryWeapon = 2;
-			_Player.AmmoGain = 1.;
-		}
-		case "Grenades":
-		{
-			SetPlayerAmmoMax(_Player, CSmMode::EWeapon::Laser, 0);
-			SetPlayerAmmoMax(_Player, CSmMode::EWeapon::Nucleus, 0);
-			SetPlayerAmmoMax(_Player, CSmMode::EWeapon::Arrow, 0);
-			ActionLoad(_Player, CSmMode::EActionSlot::Slot_A, G_CustomGrenades);
-			ActionBind(_Player, CSmMode::EActionSlot::Slot_A, CSmMode::EActionInput::Weapon);
-			PrimaryWeapon = 3;
-			_Player.AmmoGain = 0.85;
-		}
-		case "Nucleus":
-		{
-			SetPlayerAmmoMax(_Player, CSmMode::EWeapon::Nucleus, 2);
-			SetPlayerAmmo(_Player, CSmMode::EWeapon::Nucleus, 1);
-			SetPlayerWeapon(_Player, CSmMode::EWeapon::Nucleus, False);
-			_Player.AmmoGain = 0.65;
-			ActionBind(_Player, CSmMode::EActionSlot::Slot_A, CSmMode::EActionInput::None);
-			PrimaryWeapon = 4;
-		}
-		case "Shotgun":
-		{
-			SetPlayerAmmoMax(_Player, CSmMode::EWeapon::Laser, 0);
-			SetPlayerAmmoMax(_Player, CSmMode::EWeapon::Nucleus, 0);
-			SetPlayerAmmoMax(_Player, CSmMode::EWeapon::Arrow, 0);
-			ActionLoad(_Player, CSmMode::EActionSlot::Slot_A, G_CustomShotgun);
-			ActionBind(_Player, CSmMode::EActionSlot::Slot_A, CSmMode::EActionInput::Weapon);
-			_Player.AmmoGain = 0.85;
-			PrimaryWeapon = 5;
-		}
-		case "BlowBomb":
-		{
-			SetPlayerAmmoMax(_Player, CSmMode::EWeapon::Laser, 0);
-			SetPlayerAmmoMax(_Player, CSmMode::EWeapon::Nucleus, 0);
-			SetPlayerAmmoMax(_Player, CSmMode::EWeapon::Arrow, 0);
-			ActionLoad(_Player, CSmMode::EActionSlot::Slot_A, G_CustomBlowBomb);
-			ActionBind(_Player, CSmMode::EActionSlot::Slot_A, CSmMode::EActionInput::Weapon);
-			_Player.AmmoGain = 0.95;
-			PrimaryWeapon = 6;
-		}
-		default: return;
-	}	
-	_Player.StaminaMax = C_StaminaWith2Weapons;
-	_Player.StaminaGain = C_StaminaWith2Weapons;
-	_Player.SpeedPower = C_SpeedWith2Weapons;
-	declare PUI <=> UIManager.GetUI(_Player);
-	if(PUI != Null)
-	{
-		declare netwrite Net_PrimaryWeapon for PUI = 0;
-		Net_PrimaryWeapon = PrimaryWeapon;
-	}	
-	foreach(Player in Players)
-	{
-		declare UI <=> UIManager.GetUI(Player);
-		if (UI != Null) 
-		{ 
-			declare netwrite Integer[Text] Net_PrimaryWeapons for UI;
-			Net_PrimaryWeapons[_Player.Login] = PrimaryWeapon;
-		}
-	}		
-
-	UIManager.UIAll.SendNotice(
-		TextLib::Compose(_("|Player picked up item|$<%1$> picked up %2"), _Player.Name, _Weapon), 
-		CUIConfig::ENoticeLevel::Default , Null, 
-		CUIConfig::EAvatarVariant::Happy, 
-		CUIConfig::EUISound::Silence, 0
-	);
-}
-
-Void PickUpObject(CSmPlayer _Player, CSmObject _Object) {
-	if (_Player == Null || _Object == Null) return;
-	
-	declare Tag for _Object = "";
-	declare AnchorId for _Object = NullId;
-	
-	if (!MapLandmarks_ObjectAnchor.existskey(AnchorId)) return;
-	declare MapLandmark <=> MapLandmarks_ObjectAnchor[AnchorId];
-	declare ObjectSpawned for MapLandmark = False;
-	declare ObjectNextSpawn for MapLandmark = Now;
-	ObjectSpawned = False;
-	if(MB_CurrentSection == "WarmUp") ObjectNextSpawn = Now + 5000;
-	else
-	{
-		if (S_ItemSpawnTime > 5) ObjectNextSpawn = Now + (S_ItemSpawnTime*1000);
-		else ObjectNextSpawn = Now + 5000;
-	}
-	
-	switch (Tag) 
-	{
-		case C_Object["Laser"]: PickUpWeapon(_Player, Tag);
-		case C_Object["PlasmaGun"]: PickUpWeapon(_Player, Tag);
-		case C_Object["Grenades"]: PickUpWeapon(_Player, Tag);
-		case C_Object["Nucleus"]: PickUpWeapon(_Player, Tag);
-		case C_Object["Shotgun"]: PickUpWeapon(_Player, Tag);
-		case C_Object["BlowBomb"]: PickUpWeapon(_Player, Tag);
-	}
-	
-	_Object.SetPlayer(_Player);
-	ObjectDestroy(_Object);
-}
-
-Void SwitchWeapon(CSmPlayer _Player, CSmModeEvent::EActionInput _Input) {
-	declare PrimaryWeapon for _Player = 1;
-	declare SecondaryWeapon for _Player = 1;
-	declare CurrentWeaponSlot for _Player = 2;
-	
-	switch (_Input) {
-		// Primary weapon
-		case CSmModeEvent::EActionInput::Activable1: 
-		{
-			switch(PrimaryWeapon)
-			{
-				case 1:
-				{
-					SetPlayerAmmoMax(_Player, CSmMode::EWeapon::Laser, 1);
-					SetPlayerWeapon(_Player, CSmMode::EWeapon::Laser, False);
-					ActionLoad(_Player, CSmMode::EActionSlot::Slot_A, NullId);
-					ActionBind(_Player, CSmMode::EActionSlot::Slot_A, CSmMode::EActionInput::None);
-					ActionBind(_Player, CSmMode::EActionSlot::Slot_B, CSmMode::EActionInput::None);
-					_Player.AmmoGain = 0.85;
-				}
-				case 2:
-				{
-					SetPlayerAmmoMax(_Player, CSmMode::EWeapon::Laser, 0);
-					SetPlayerAmmoMax(_Player, CSmMode::EWeapon::Nucleus, 0);
-					SetPlayerAmmoMax(_Player, CSmMode::EWeapon::Arrow, 0);
-					ActionLoad(_Player, CSmMode::EActionSlot::Slot_A, G_CustomPlasmaGun);
-					ActionBind(_Player, CSmMode::EActionSlot::Slot_A, CSmMode::EActionInput::Weapon);
-					_Player.AmmoGain = 1.;
-				}
-				case 3:
-				{
-					SetPlayerAmmoMax(_Player, CSmMode::EWeapon::Laser, 0);
-					SetPlayerAmmoMax(_Player, CSmMode::EWeapon::Nucleus, 0);
-					SetPlayerAmmoMax(_Player, CSmMode::EWeapon::Arrow, 0);
-					ActionLoad(_Player, CSmMode::EActionSlot::Slot_A, G_CustomGrenades);
-					ActionBind(_Player, CSmMode::EActionSlot::Slot_A, CSmMode::EActionInput::Weapon);
-					_Player.AmmoGain = 1.;
-				}
-				case 4:
-				{
-					SetPlayerAmmoMax(_Player, CSmMode::EWeapon::Nucleus, 2);
-					SetPlayerWeapon(_Player, CSmMode::EWeapon::Nucleus, False);
-					ActionLoad(_Player, CSmMode::EActionSlot::Slot_A, NullId);
-					ActionBind(_Player, CSmMode::EActionSlot::Slot_A, CSmMode::EActionInput::None);
-					ActionBind(_Player, CSmMode::EActionSlot::Slot_B, CSmMode::EActionInput::None);
-					_Player.AmmoGain = 0.65;
-				}
-				case 5:
-				{
-					SetPlayerAmmoMax(_Player, CSmMode::EWeapon::Laser, 0);
-					SetPlayerAmmoMax(_Player, CSmMode::EWeapon::Nucleus, 0);
-					SetPlayerAmmoMax(_Player, CSmMode::EWeapon::Arrow, 0);
-					ActionLoad(_Player, CSmMode::EActionSlot::Slot_A, G_CustomShotgun);
-					ActionBind(_Player, CSmMode::EActionSlot::Slot_A, CSmMode::EActionInput::Weapon);
-					_Player.AmmoGain = 1.;
-				}
-				case 6:
-				{
-					SetPlayerAmmoMax(_Player, CSmMode::EWeapon::Laser, 0);
-					SetPlayerAmmoMax(_Player, CSmMode::EWeapon::Nucleus, 0);
-					SetPlayerAmmoMax(_Player, CSmMode::EWeapon::Arrow, 0);
-					ActionLoad(_Player, CSmMode::EActionSlot::Slot_A, G_CustomBlowBomb);
-					ActionBind(_Player, CSmMode::EActionSlot::Slot_A, CSmMode::EActionInput::Weapon);
-					_Player.AmmoGain = 1.;
-				}
-				default:
-				{
-					switch(SecondaryWeapon)
-					{
-						case 1:
-						{
-							SetPlayerAmmoMax(_Player, CSmMode::EWeapon::Rocket, 4);
-							SetPlayerWeapon(_Player, CSmMode::EWeapon::Rocket, False);
-							//ActionLoad(_Player, CSmMode::EActionSlot::Slot_A, NullId);
-							ActionBind(_Player, CSmMode::EActionSlot::Slot_A, CSmMode::EActionInput::None);
-							ActionBind(_Player, CSmMode::EActionSlot::Slot_B, CSmMode::EActionInput::None);
-							_Player.AmmoGain = 1.;
-						}
-						case 2:
-						{
-							SetPlayerAmmoMax(_Player, CSmMode::EWeapon::Rocket, 0);
-							//ActionLoad(_Player, CSmMode::EActionSlot::Slot_A, NullId);
-							ActionLoad(_Player, CSmMode::EActionSlot::Slot_B, G_CustomBounceRocket);
-							ActionBind(_Player, CSmMode::EActionSlot::Slot_A, CSmMode::EActionInput::None);
-							ActionBind(_Player, CSmMode::EActionSlot::Slot_B, CSmMode::EActionInput::Weapon);
-							_Player.AmmoGain = 1.;
-						}
-						case 3:
-						{
-							SetPlayerAmmoMax(_Player, CSmMode::EWeapon::Rocket, 0);
-							//ActionLoad(_Player, CSmMode::EActionSlot::Slot_A, NullId);
-							ActionLoad(_Player, CSmMode::EActionSlot::Slot_B, G_CustomElectricPistol);
-							ActionBind(_Player, CSmMode::EActionSlot::Slot_A, CSmMode::EActionInput::None);
-							ActionBind(_Player, CSmMode::EActionSlot::Slot_B, CSmMode::EActionInput::Weapon);
-							_Player.AmmoGain = 1.;
-						}
-					}	
-				}
-			}
-			CurrentWeaponSlot = 1;
-		}
-		// Secondary weapon
-		case CSmModeEvent::EActionInput::Activable2: 
-		{
-			switch(SecondaryWeapon)
-			{
-				case 1:
-				{
-					SetPlayerAmmoMax(_Player, CSmMode::EWeapon::Rocket, 4);
-					SetPlayerWeapon(_Player, CSmMode::EWeapon::Rocket, False);
-					//SetPlayerAmmo(_Player, CSmMode::EWeapon::Laser, 0);
-					//SetPlayerAmmo(_Player, CSmMode::EWeapon::Nucleus, 0);
-					//ActionLoad(_Player, CSmMode::EActionSlot::Slot_A, NullId);
-					ActionBind(_Player, CSmMode::EActionSlot::Slot_A, CSmMode::EActionInput::None);
-					ActionBind(_Player, CSmMode::EActionSlot::Slot_B, CSmMode::EActionInput::None);
-					_Player.AmmoGain = 1.;
-				}
-				case 2:
-				{
-					SetPlayerAmmoMax(_Player, CSmMode::EWeapon::Rocket, 0);
-					//SetPlayerAmmo(_Player, CSmMode::EWeapon::Laser, 0);
-					//SetPlayerAmmo(_Player, CSmMode::EWeapon::Nucleus, 0);
-					SetPlayerWeapon(_Player, CSmMode::EWeapon::Rocket, False);
-					//ActionLoad(_Player, CSmMode::EActionSlot::Slot_A, NullId);
-					ActionLoad(_Player, CSmMode::EActionSlot::Slot_B, G_CustomBounceRocket);
-					ActionBind(_Player, CSmMode::EActionSlot::Slot_A, CSmMode::EActionInput::None);
-					ActionBind(_Player, CSmMode::EActionSlot::Slot_B, CSmMode::EActionInput::Weapon);
-					_Player.AmmoGain = 1.;
-				}
-				case 3:
-				{
-					SetPlayerAmmoMax(_Player, CSmMode::EWeapon::Rocket, 0);
-					//SetPlayerAmmo(_Player, CSmMode::EWeapon::Laser, 0);
-					//SetPlayerAmmo(_Player, CSmMode::EWeapon::Nucleus, 0);
-					SetPlayerWeapon(_Player, CSmMode::EWeapon::Rocket, False);
-					//ActionLoad(_Player, CSmMode::EActionSlot::Slot_A, NullId);
-					ActionLoad(_Player, CSmMode::EActionSlot::Slot_B, G_CustomElectricPistol);
-					ActionBind(_Player, CSmMode::EActionSlot::Slot_A, CSmMode::EActionInput::None);
-					ActionBind(_Player, CSmMode::EActionSlot::Slot_B, CSmMode::EActionInput::Weapon);
-					_Player.AmmoGain = 1.;
-				}
-			}	
-			CurrentWeaponSlot = 2;
-		}
-	}
-}
-
 Void DisplayNotice()
 {
 	foreach (Player in Players) 
@@ -2174,7 +1834,7 @@ Void DisplayNotice()
 		declare rand = MathLib::Rand(1,6);
 		
 		declare Text[Integer] MSG;
-		declare Prefix = "$f90$s>>";
+		declare Prefix = "$f90$s>> ";
 		switch(Player.User.Language)
 		{
 			case "pl":
@@ -2289,7 +1949,7 @@ main()
 			{
 				case 1: Label_Primary.Value = "1: Laser";
 				case 2: Label_Primary.Value = "1: Plasma Gun";
-				case 3: Label_Primary.Value = "1: Grenades";
+				case 3: Label_Primary.Value = "1: Burning Grenades";
 				case 4: Label_Primary.Value = "1: Nucleus";
 				case 5: Label_Primary.Value = "1: Shotgun";
 				case 6: Label_Primary.Value = "1: BlowBomb";
@@ -2541,30 +2201,33 @@ Text UpdateLayerProgression(Integer _Show)
 	foreach(LandmarkGauge in MapLandmarks_Gauge) 
 	{
 		if (LandmarkGauge.Gauge.ValueReal <= 0. || LandmarkGauge.Gauge.ValueReal > 1.) continue;
-		if (LandmarkGauge.Tag == "Zone A") 
+		switch(LandmarkGauge.Tag)
 		{
-			ZoneA = MathLib::NearestInteger(LandmarkGauge.Gauge.ValueReal * 100.);
-			RZoneA = LandmarkGauge.Gauge.ValueReal;
-			ClanA = LandmarkGauge.Gauge.Clan;
-			if(G_ZoneClanList[1] == 0) ClanColorA = "$fff";
-			else ClanColorA = Teams[G_ZoneClanList[1]-1].ColorText;
+			case "Zone A":
+			{
+				ZoneA = MathLib::NearestInteger(LandmarkGauge.Gauge.ValueReal * 100.);
+				RZoneA = LandmarkGauge.Gauge.ValueReal;
+				ClanA = LandmarkGauge.Gauge.Clan;
+				if(G_ZoneClanList[1] == 0) ClanColorA = "$fff";
+				else ClanColorA = Teams[G_ZoneClanList[1]-1].ColorText;
+			}
+			case "Zone B":
+			{
+				ZoneB = MathLib::NearestInteger(LandmarkGauge.Gauge.ValueReal * 100.);
+				RZoneB = LandmarkGauge.Gauge.ValueReal;
+				ClanB = LandmarkGauge.Gauge.Clan;
+				if(G_ZoneClanList[2] == 0) ClanColorB = "$fff";
+				else ClanColorB = Teams[G_ZoneClanList[2]-1].ColorText;
+			}
+			case "Zone C":
+			{
+				ZoneC = MathLib::NearestInteger(LandmarkGauge.Gauge.ValueReal * 100.);
+				RZoneC = LandmarkGauge.Gauge.ValueReal;
+				ClanC = LandmarkGauge.Gauge.Clan;
+				if(G_ZoneClanList[3] == 0) ClanColorC = "$fff";
+				else ClanColorC = Teams[G_ZoneClanList[3]-1].ColorText;
+			}
 		}
-		if (LandmarkGauge.Tag == "Zone B")
-		{
-			ZoneB = MathLib::NearestInteger(LandmarkGauge.Gauge.ValueReal * 100.);
-			RZoneB = LandmarkGauge.Gauge.ValueReal;
-			ClanB = LandmarkGauge.Gauge.Clan;
-			if(G_ZoneClanList[2] == 0) ClanColorB = "$fff";
-			else ClanColorB = Teams[G_ZoneClanList[2]-1].ColorText;
-		}
-		if (LandmarkGauge.Tag == "Zone C") 
-		{
-			ZoneC = MathLib::NearestInteger(LandmarkGauge.Gauge.ValueReal * 100.);
-			RZoneC = LandmarkGauge.Gauge.ValueReal;
-			ClanC = LandmarkGauge.Gauge.Clan;
-			if(G_ZoneClanList[3] == 0) ClanColorC = "$fff";
-			else ClanColorC = Teams[G_ZoneClanList[3]-1].ColorText;
-		}	
 	}
 	declare Text ManiaLink = "";
 	ManiaLink = """
@@ -2723,10 +2386,6 @@ main()
 		if (!PageIsVisible) continue;
 		
 		{{{CustomUI::InjectMLLoop()}}}
-		
-		declare CSmPlayer TargetPlayer;
-		if (GUIPlayer != Null) TargetPlayer <=> GUIPlayer;
-		else TargetPlayer <=> InputPlayer;
 
 		Label_Info_1.Hide();
 		Label_Info_2.Hide();
@@ -2734,13 +2393,13 @@ main()
 		Label_Info_4.Hide();
 		Label_Info_5.Hide();
 		
-		if (TargetPlayer.SpawnStatus == CSmPlayer::ESpawnStatus::Spawned && TargetPlayer.CapturedLandmark != Null && TargetPlayer.CapturedLandmark.Gauge != Null && (TargetPlayer.CapturedLandmark.Tag == "Zone A" || TargetPlayer.CapturedLandmark.Tag == "Zone B" || TargetPlayer.CapturedLandmark.Tag == "Zone C")) 
+		if (InputPlayer.SpawnStatus == CSmPlayer::ESpawnStatus::Spawned && InputPlayer.CapturedLandmark != Null && InputPlayer.CapturedLandmark.Gauge != Null && (InputPlayer.CapturedLandmark.Tag == "Zone A" || InputPlayer.CapturedLandmark.Tag == "Zone B" || InputPlayer.CapturedLandmark.Tag == "Zone C")) 
 		{
 			if (!Frame_Capture.Visible) Frame_Capture.Visible = True;
-			Gauge_Capture.Ratio = TargetPlayer.CapturedLandmark.Gauge.ValueReal;
-			Gauge_Capture.Clan = TargetPlayer.CapturedLandmark.Gauge.Clan;
-			Label_Goal.Value = TargetPlayer.CapturedLandmark.Tag^"$dda  "^ML::FloorInteger(TargetPlayer.CapturedLandmark.Gauge.ValueReal * 100.)^"%";
-			if(TargetPlayer.CapturedLandmark.Gauge.Speed < 0)
+			Gauge_Capture.Ratio = InputPlayer.CapturedLandmark.Gauge.ValueReal;
+			Gauge_Capture.Clan = InputPlayer.CapturedLandmark.Gauge.Clan;
+			Label_Goal.Value = InputPlayer.CapturedLandmark.Tag^"$dda  "^ML::FloorInteger(InputPlayer.CapturedLandmark.Gauge.ValueReal * 100.)^"%";
+			if(InputPlayer.CapturedLandmark.Gauge.Speed < 0)
 			{
 				Label_Info_1.Show();
 				Label_Info_2.Hide();
@@ -2748,9 +2407,9 @@ main()
 				Label_Info_4.Hide();
 				Label_Info_5.Hide();
 			}
-			else if(TargetPlayer.CapturedLandmark.Gauge.Speed == 0)
+			else if(InputPlayer.CapturedLandmark.Gauge.Speed == 0)
 			{
-				if(TargetPlayer.CapturedLandmark.Gauge.Clan != TargetPlayer.CurrentClan)
+				if(InputPlayer.CapturedLandmark.Gauge.Clan != InputPlayer.CurrentClan)
 				{
 					Label_Info_1.Hide();
 					Label_Info_2.Show();
@@ -2758,7 +2417,7 @@ main()
 					Label_Info_4.Hide();
 					Label_Info_5.Hide();
 				}	
-				else if(TargetPlayer.CapturedLandmark.Gauge.ValueReal == 1.)
+				else if(InputPlayer.CapturedLandmark.Gauge.ValueReal == 1.)
 				{
 					Label_Info_1.Hide();
 					Label_Info_2.Hide();
@@ -2775,7 +2434,7 @@ main()
 					Label_Info_5.Hide();
 				}
 			}
-			else if(TargetPlayer.CapturedLandmark.Gauge.Speed > 1)
+			else if(InputPlayer.CapturedLandmark.Gauge.Speed > 1)
 			{
 				Label_Info_1.Hide();
 				Label_Info_2.Hide();

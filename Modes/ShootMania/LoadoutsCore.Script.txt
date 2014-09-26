@@ -1,0 +1,1389 @@
+#Extends "Modes/Shootmania/ModeBase.Script.txt"
+
+#Include "Libs/Nadeo/Sound.Script.txt" as Sound
+#Include "Libs/Nadeo/Message.Script.txt" as Message
+#Include "Libs/Nadeo/Layers2.Script.txt" as Layers
+
+#Setting S_MapPointsLimit		4		as _("Number of rounds to make half-time")
+#Setting S_ClassSelectionTime	13		as _("Time to choose basic loadout before round")
+#Setting S_FinalRoundExceptDraw	False	as _("Use additional round to determine map winner")
+
+#Const C_ImgBaseDir				"file://Media/Manialinks/Shootmania/Common/"
+#Const C_ImgModeDir				"file://Media/Manialinks/Shootmania/Common/FireFight"
+
+#Const C_RocketsAmmo			4 // rockets
+#Const C_BRocketsAmmo			3 // bouncing rockets
+#Const C_PistolAmmo 			5 // Electric Pistol
+
+#Const C_StaminaWith1Weapon 	1.0
+#Const C_SpeedWith1Weapon 		1.0
+#Const C_StaminaWith2Weapons 	0.7
+#Const C_SpeedWith2Weapons 		0.9
+
+#Const C_Object [
+	"Laser"			=> "Laser",
+	"PlasmaGun"		=> "PlasmaGun",
+	"Grenades"		=> "Grenades",
+	"Nucleus"		=> "Nucleus",
+	"Shotgun"		=> "Shotgun",
+	"BlowBomb"		=> "BlowBomb"
+]
+
+declare Ident[Text] 				G_ObjectId;				// Ids of the objects
+declare Ident 						G_CustomBounceRocket;
+declare Ident 						G_CustomGrenades;
+declare Ident 						G_CustomPlasmaGun;
+declare Ident 						G_CustomElectricPistol;
+declare Ident 						G_CustomShotgun;
+declare Ident 						G_CustomBlowBomb;
+
+***SelectClasses***
+***
+declare Boolean CountdownPlayed = False;
+declare PreRoundEndTime = Now + _TimeToChoose;
+UIManager.UIAll.CountdownEndTime = PreRoundEndTime;
+foreach (Player in Players) Layers::Attach("WeaponSelection", Player);
+
+while (PreRoundEndTime > Now && !ServerShutdownRequested && !MatchEndRequested) 
+{
+	MB_Sleep(500);
+
+	if(PreRoundEndTime-1000 < Now && !CountdownPlayed)
+	{
+		Sound::PlaySound("file://Media/Sounds/FireFight/countdown.ogg", -5., 0);
+		CountdownPlayed = True;	
+	}
+	foreach (Player in Players) 
+	{
+		if(Player.IsFakePlayer) G_SecondaryWeapons[Player.Login] = 1;
+		declare UI <=> UIManager.GetUI(Player);
+		if (UI == Null) continue;
+		// If the player changed clan during the class selection
+		if (Player.RequestedClan != Player.CurrentClan) 
+		{
+			Layers::Detach("WeaponSelection", Player);
+			SetPlayerClan(Player, Player.RequestedClan);
+			Layers::Attach("WeaponSelection", Player);
+		}
+		declare SecondaryWeapon for Player = 1;
+		G_SecondaryWeapons[Player.Login] = SecondaryWeapon;
+	}
+}
+foreach (Player in Players) 
+{
+	declare UI <=> UIManager.GetUI(Player);
+	if (UI == Null) continue;
+	declare netread Net_SecondaryWeapon for UI = 1;
+	G_SecondaryWeapons[Player.Login] = Net_SecondaryWeapon;
+	declare netwrite Integer[Text] Net_SecondaryWeapons for UI;
+	Net_SecondaryWeapons = G_SecondaryWeapons;
+	Layers::Detach("WeaponSelection", Player);
+}
+// Sleep a little to let the server receive all the selected classes
+MB_Sleep(2000);
+Layers::Show("Players");
+***
+
+***WaitForPlayers***
+***
+	UIManager.UIAll.UISequence = CUIConfig::EUISequence::Playing;
+	
+	UIManager.UIAll.BigMessageSound = CUIConfig::EUISound::Warning;
+	StartTime = Now;
+	
+	// Shutdown the poles during warmup
+	foreach (Goal in MapLandmarks_Gauge) {
+		Goal.Gauge.Clan = 0;
+		Goal.Gauge.Speed = 0;
+		Goal.Gauge.Value = 0;
+		Goal.Gauge.Max = 1000;
+		Goal.Gauge.Captured = False;
+	}
+
+	// Load Items
+	ObjectDestroyAll();
+	UpdateMarker();
+	MB_CurrentSection = "WarmUp";
+	foreach (MapLandmark in MapLandmarks_ObjectAnchor) 
+	{
+		declare ObjectSpawned for MapLandmark = False;
+		declare ObjectNextSpawn for MapLandmark = Now;
+		ObjectSpawned = False;
+		ObjectNextSpawn = Now + 3000;
+	}
+	
+	while (ClansNbPlayers[1] < 1 || ClansNbPlayers[2] < 1 && (!ServerShutdownRequested && !MatchEndRequested)) {
+		MB_Yield();
+		LT_SpawnWeaponItems();
+		Users_SetNbFakeUsers(G_BlueBot, G_RedBot);
+		
+		// Let the server sleep if there's no players on it
+		if (PlayersNbTotal <= 0) continue;
+
+		SM::UnspawnPlayersChangingClan();
+		foreach(Player in Players) 
+		{
+			if (Player.SpawnStatus == CSmPlayer::ESpawnStatus::NotSpawned) 
+			{
+				declare Spawn <=> Map::GetPlayerSpawn("Spawn1", 0);
+				if (Spawn != Null) SM::SpawnPlayer(Player, Player.RequestedClan, Spawn);
+				ActionLoad(Player, CSmMode::EActionSlot::Slot_A, NullId);
+				ActionLoad(Player, CSmMode::EActionSlot::Slot_B, NullId);
+				ActionBind(Player, CSmMode::EActionSlot::Slot_A, CSmMode::EActionInput::None);
+				ActionBind(Player, CSmMode::EActionSlot::Slot_B, CSmMode::EActionInput::None);
+				SetPlayerWeapon(Player, CSmMode::EWeapon::Rocket, False);
+				SetPlayerAmmoMax(Player, CSmMode::EWeapon::Rocket, C_RocketsAmmo);
+			}
+		}
+		
+		foreach (Player in Players) 
+		{
+			declare UI <=> UIManager.GetUI(Player);
+			if (UI == Null) continue;
+			declare MSG = "";
+			switch(Player.User.Language)
+			{
+				case "pl": MSG = "Do gry potrzeba przynajmniej 2 graczy";
+				case "fr": MSG = "2 joueurs nécessaire pour jouer";
+				case "ru": MSG = "Требуется 2 игрока для начала игры";
+				case "it": MSG = "Per giocare bisogna almeno 2 giocatori";
+				case "de": MSG = "Es müssen 2 Spieler zum Spielen da sein.";
+				default: MSG = "2 players needed to play";
+			}
+			UI.StatusMessage = MSG;
+		}	
+	}
+	
+	SM::UnspawnAllPlayers();
+	StartTime = -1;
+	UIManager.UIAll.BigMessage = "";
+	UIManager.UIAll.StatusMessage = "";
+	UIManager.UIAll.UISequence = CUIConfig::EUISequence::EndRound;
+	ObjectDestroyAll();
+	MB_CurrentSection = "StartRound";
+	
+	// ---------------------------------- //
+	// Update the players clublinks
+	if (S_ForceClublinkTeam1 == "" && S_ForceClublinkTeam2 == "") Clublink::DefineTeamAuto();
+	else Clublink::DefineTeamFromUrl(S_ForceClublinkTeam1, S_ForceClublinkTeam2);	
+***
+
+***AnnounceHalfTime***
+***
+Message::CleanAllMessages();
+foreach(Player in Players)
+{
+	declare MSG1 = "";
+	declare MSG2 = "";
+	switch(Player.User.Language)
+	{
+		case "pl": { MSG1 = "$fc0Połowa"; MSG2 = "Zamiana stron"; }
+		case "fr": { MSG1 = "$fc0Mi-temps"; MSG2 = "Changement de côté"; }
+		case "ru": { MSG1 = "$fc0Прошла половина матча"; MSG2 = "Переключение стороны"; }
+		case "it": { MSG1 = "$fcMetà"; MSG2 = "Il cambiamento dei lati"; }
+		case "de": { MSG1 = "$fc0Halbzeit"; MSG2 = "Seitenwechsel"; }
+		default: { MSG1 = "$fc0Half-Time"; MSG2 = "Switching sides"; }
+	}
+	Message::SendBigMessage(Player, MSG1, 5000, 0, CUIConfig::EUISound::StartMatch, 3);
+	Message::SendStatusMessage(Player, MSG2, 5000, 0);
+}
+foreach(Spectator in Spectators)
+{
+	declare MSG1 = "";
+	declare MSG2 = "";
+	switch(Spectator.User.Language)
+	{
+		case "pl": { MSG1 = "$fc0Połowa"; MSG2 = "Zamiana stron"; }
+		case "fr": { MSG1 = "$fc0Mi-temps"; MSG2 = "Changement de côté"; }
+		case "ru": { MSG1 = "$fc0Половина матча"; MSG2 = "Переключение стороны"; }
+		case "it": { MSG1 = "$fcMetà"; MSG2 = "Il cambiamento dei lati"; }
+		case "de": { MSG1 = "$fc0Halbzeit"; MSG2 = "Seitenwechsel"; }
+		default: { MSG1 = "$fc0Half-Time"; MSG2 = "Switching sides"; }
+	}
+	Message::SendBigMessage(Spectator, MSG1, 5000, 0, CUIConfig::EUISound::StartMatch, 3);
+	Message::SendStatusMessage(Spectator, MSG2, 5000, 0);
+}
+***
+
+***AnnounceFinalRound***
+***
+Message::CleanAllMessages();
+foreach(Player in Players)
+{
+	declare MSG = "";
+	switch(Player.User.Language)
+	{
+		case "pl": MSG = "$fc0Ostateczna runda";
+		case "fr": MSG = "$fc0Dernière manche";
+		case "ru": MSG = "$fc0Финальный раунд";
+		case "it": MSG = "$fc0L’ultimo turno";
+		case "de": MSG = "$fc0Finale Runde";
+		default: MSG = "$fc0Final Round";
+	}
+	Message::SendBigMessage(Player, MSG, 5000, 0, CUIConfig::EUISound::StartMatch, 3);
+}
+foreach(Spectator in Spectators)
+{
+	declare MSG = "";
+	switch(Spectator.User.Language)
+	{
+		case "pl": MSG = "$fc0Ostateczna runda";
+		case "fr": MSG = "$fc0Dernière manche";
+		case "ru": MSG = "$fc0Финальный раунд";
+		case "it": MSG = "$fc0L’ultimo turno";
+		case "de": MSG = "$fc0Finale Runde";
+		default: MSG = "$fc0Final Round";
+	}
+	Message::SendBigMessage(Spectator, MSG, 5000, 0, CUIConfig::EUISound::StartMatch, 3);
+}
+***
+
+***AnnounceHeadshot***
+***
+declare headdistance = MathLib::Distance(HeadPosi, stutz);
+if (headdistance < 0.2)
+{
+	Message::SendStatusMessage(Event.Shooter, TextLib::Compose(_("$f90Headshot!")), 2500, 1);
+	declare MSG = "";
+	switch(Event.Victim.User.Language)
+	{
+		case "pl": MSG = "trafił cię w głowę!";
+		case "fr": MSG = "t'as tiré dans la tête !";
+		case "ru": MSG = "попал в голову!";
+		case "it": MSG = "Ti ha colpito Alla testa!";
+		case "de": MSG = "Am Kopf getroffen!";
+		default: MSG = "hit your head!";
+	}
+	Message::SendStatusMessage(Event.Victim, TextLib::Compose(_("$<%1$> %2"), Event.Shooter.Name, MSG), 2500, 1);
+	Sound::PlaySound("file://Media/Sounds/FireFight/headshot.ogg", -1., 200, Event.Shooter);
+	Sound::PlaySound("file://Media/Sounds/FireFight/headshot.ogg", -1., 300, Event.Victim);
+	Score::AddPoints(Event.Shooter, 1);
+	Event.ShooterPoints += 1;
+	Event.Damage += 100;
+}
+***
+
+***ActionMakerAnnounceHeadshot***
+***
+declare headdistance = MathLib::Distance(HeadPosi, stutz);
+if (headdistance < 0.2)
+{
+	Message::SendStatusMessage(Event.Shooter, TextLib::Compose(_("$f90Headshot!")), 2500, 1);
+	declare MSG = "";
+	switch(Event.Victim.User.Language)
+	{
+		case "pl": MSG = "trafił cię w głowę!";
+		case "fr": MSG = "t'as tiré dans la tête !";
+		case "ru": MSG = "попал в голову!";
+		case "it": MSG = "Ti ha colpito Alla testa!";
+		case "de": MSG = "Am Kopf getroffen!";
+		default: MSG = "hit your head!";
+	}
+	Message::SendStatusMessage(Event.Victim, TextLib::Compose(_("$<%1$> %2"), Event.Shooter.Name, MSG), 2500, 1);
+	Sound::PlaySound("file://Media/Sounds/FireFight/headshot.ogg", -1., 200, Event.Shooter);
+	Sound::PlaySound("file://Media/Sounds/FireFight/headshot.ogg", -1., 300, Event.Victim);
+	Score::AddPoints(Event.Shooter, 1);
+	Points += 1;
+	Damage += 100;
+}
+***
+
+***HeadshotFunctions***
+***
+declare HeadPosi = <Event.Victim.Position[0]+Event.Victim.AimDirection[0]*0.2, Event.Victim.Position[1]+1.5, Event.Victim.Position[2]+Event.Victim.AimDirection[2]*0.2>;
+declare ShootPosi = Event.Shooter.Position+<0.0, 1.35, 0.0>;
+declare ShootDir = Event.Shooter.AimDirection;
+declare a1 = Private_Skalar(ShootDir, ShootPosi);
+declare a2 = Private_Skalar(ShootDir, ShootDir);
+declare a3 = Private_Skalar(ShootDir, -HeadPosi);
+declare gamma = (a1+a3)/(-1*a2);
+declare stutz = ShootPosi + (gamma*ShootDir);		
+***
+
+***OnNearMiss***
+***
+if (Event.Shooter == Null || Event.Shooter == Event.Victim) Discard(Event);
+else 
+{
+	if (Event.WeaponNum == GetWeaponNum(CSmMode::EWeapon::Laser)) 
+	{
+		declare MaxMissDist = 0.2;
+		if (Event.Shooter != Null && Event.Victim != Null) 
+		{
+			declare Distance = MathLib::Distance(Event.Shooter.Position, Event.Victim.Position);
+			MaxMissDist = Distance * 2 / 100;
+			if (MaxMissDist > 0.2) MaxMissDist = 0.2;
+	
+			if (Event.MissDist <= MaxMissDist)
+			{
+				declare MSG1 = "";
+				switch(Event.Shooter.User.Language)
+				{
+					case "pl": MSG1 = "Chybiłeś o $ff0%2cm$g gracza $<%1$>.";
+					case "fr": MSG1 = "Tu as loupé $<%1$> de $ff0%2cm.";
+					case "ru": MSG1 = "Вы промахнулись по $<%1$> на $ff0%2см.";
+					case "it": MSG1 = "È mancato $ff0%2cm$g al giocatore $<%1$>.";
+					case "de": MSG1 = "$<%1$> um $ff0%2cm verfehlt.";
+					default: MSG1 = "You missed $<%1$> by $ff0%2cm.";
+				}
+
+				declare MSG2 = "";
+				switch(Event.Victim.User.Language)
+				{
+					case "pl": MSG2 = "Uniknąłeś trafienia z lasera $<%1$> o $ff0%2cm.";
+					case "fr": MSG2 = "Tu as esquivé le laser de $<%1$> de $ff0%2cm.";
+					case "ru": MSG2 = "Вы уклонились от лазера $<%1$> на $ff0%2см.";
+					case "it": MSG2 = "Hai evitato un colpito di laser $<%1$> di $ff0%2cm.";
+					case "de": MSG2 = "Der Laser hat $<%1$> um $ff0%2cm verfehlt.";
+					default: MSG2 = "You dodged $<%1$> laser by $ff0%2cm.";
+				}
+				if (Event.MissDist < 0.01)
+				{
+					Message::SendStatusMessage(Event.Shooter, TextLib::Compose(MSG1, Event.Victim.Name, TextLib::ToText(1)), 3000, 2);
+					Message::SendStatusMessage(Event.Victim, TextLib::Compose(MSG2, Event.Shooter.Name), 3000, 2);
+				}
+				else
+				{
+					Message::SendStatusMessage(Event.Shooter, TextLib::Compose(MSG1, Event.Victim.Name, TextLib::ToText(MathLib::CeilingInteger(Event.MissDist*100))), 3000, 2);
+					Message::SendStatusMessage(Event.Victim, TextLib::Compose(MSG2, Event.Shooter.Name, TextLib::ToText(MathLib::CeilingInteger(Event.MissDist*100))), 3000, 2);
+				}	
+				XmlRpc::OnNearMiss(Event);
+				PassOn(Event);
+			}
+			else Discard(Event);
+		}
+	}
+}
+***
+
+***StartServer***
+***
+Sound::Load();
+Sound::Attach();
+
+Layers::Create("WeaponSelection"); // layer for secondary weapon
+Layers::Create("Players"); // players lists layer
+
+// Init Actions
+ActionList_Begin();
+G_CustomBounceRocket 				= ActionList_Add("BRocket.Action.Gbx");
+G_CustomPlasmaGun					= ActionList_Add("PlasmaGun.Action.Gbx");
+G_CustomGrenades 					= ActionList_Add("Grenades.Action.Gbx");
+G_CustomElectricPistol 				= ActionList_Add("ElectricPistol.Action.Gbx");
+G_CustomShotgun 					= ActionList_Add("Shotgun.Action.Gbx");
+G_CustomBlowBomb 					= ActionList_Add("BlowBomb.Action.Gbx");
+ActionList_End();
+
+// Init Items
+ItemList_Begin();
+G_ObjectId[C_Object["Laser"]]		= ItemList_Add("PickUpFF/Laser.Item.gbx");
+G_ObjectId[C_Object["PlasmaGun"]]	= ItemList_Add("PickUpFF/PlasmaGun.Item.gbx");
+G_ObjectId[C_Object["Grenades"]]	= ItemList_Add("PickUpFF/Grenades.Item.gbx");
+G_ObjectId[C_Object["Nucleus"]]		= ItemList_Add("PickUpFF/Nucleus.Item.gbx");
+G_ObjectId[C_Object["Shotgun"]]		= ItemList_Add("PickUpFF/Shotgun.Item.gbx");
+G_ObjectId[C_Object["BlowBomb"]]	= ItemList_Add("PickUpFF/BlowBomb.Item.gbx");
+ItemList_End();
+***
+
+***StartMap***
+***
+UIManager.UIAll.NoticesFilter_HideMapInfo = True;
+UIManager.UIAll.NoticesFilter_HideMapWarning = True;
+UIManager.UIAll.NoticesFilter_HideMatchInfo = True;
+// Init player labels visibility
+UIManager.UIAll.TeamLabelsVisibility = CUIConfig::ELabelsVisibility::WhenVisible;
+UIManager.UIAll.TeamLabelsShowGauges = CUIConfig::EVisibility::ForcedHidden;
+UIManager.UIAll.TeamLabelsShowNames = CUIConfig::EVisibility::Normal;
+UIManager.UIAll.OpposingTeamLabelsVisibility = CUIConfig::ELabelsVisibility::WhenInMiddleOfScreen;
+
+Layers::Update("WeaponSelection", Private_UpdateLayerClassSelection());
+***
+
+***StartRound***
+***
+Layers::Update("Players", Private_UpdateLayerPlayers());
+Layers::Update("WeaponSelection", Private_UpdateLayerClassSelection());
+Layers::Attach("Players");
+Layers::Hide("Players");
+***
+
+***OnPlayerAdded***
+***
+Layers::Update("Players", Private_UpdateLayerPlayers());
+***
+
+***PlayLoop***
+***
+// Spawn objects
+LT_SpawnWeaponItems();
+***
+
+***EndRound***
+***
+Layers::Hide("Players");
+Layers::Detach("Players");
+***
+
+***EndServer***
+***
+Sound::Unload();
+Layers::Destroy("WeaponSelection");
+Layers::Destroy("Players");
+Layers::Clean();
+***
+
+Void LT_PickUpWeapon(CSmPlayer _Player, Text _Weapon) 
+{
+	declare PrimaryWeapon for _Player = 1;
+	switch (_Weapon) 
+	{
+		case "Laser":
+		{
+			SetPlayerAmmoMax(_Player, CSmMode::EWeapon::Laser, 1);
+			SetPlayerAmmo(_Player, CSmMode::EWeapon::Laser, 1);
+			SetPlayerWeapon(_Player, CSmMode::EWeapon::Laser, False);
+			ActionBind(_Player, CSmMode::EActionSlot::Slot_A, CSmMode::EActionInput::None);
+			_Player.AmmoGain = 0.85;
+			PrimaryWeapon = 1;
+		}
+		case "PlasmaGun":
+		{
+			SetPlayerAmmoMax(_Player, CSmMode::EWeapon::Laser, 0);
+			SetPlayerAmmoMax(_Player, CSmMode::EWeapon::Nucleus, 0);
+			SetPlayerAmmoMax(_Player, CSmMode::EWeapon::Arrow, 0);
+			ActionLoad(_Player, CSmMode::EActionSlot::Slot_A, G_CustomPlasmaGun);
+			ActionBind(_Player, CSmMode::EActionSlot::Slot_A, CSmMode::EActionInput::Weapon);
+			PrimaryWeapon = 2;
+			_Player.AmmoGain = 1.;
+		}
+		case "Grenades":
+		{
+			SetPlayerAmmoMax(_Player, CSmMode::EWeapon::Laser, 0);
+			SetPlayerAmmoMax(_Player, CSmMode::EWeapon::Nucleus, 0);
+			SetPlayerAmmoMax(_Player, CSmMode::EWeapon::Arrow, 0);
+			ActionLoad(_Player, CSmMode::EActionSlot::Slot_A, G_CustomGrenades);
+			ActionBind(_Player, CSmMode::EActionSlot::Slot_A, CSmMode::EActionInput::Weapon);
+			PrimaryWeapon = 3;
+			_Player.AmmoGain = 0.85;
+		}
+		case "Nucleus":
+		{
+			SetPlayerAmmoMax(_Player, CSmMode::EWeapon::Nucleus, 2);
+			SetPlayerAmmo(_Player, CSmMode::EWeapon::Nucleus, 1);
+			SetPlayerWeapon(_Player, CSmMode::EWeapon::Nucleus, False);
+			_Player.AmmoGain = 0.65;
+			ActionBind(_Player, CSmMode::EActionSlot::Slot_A, CSmMode::EActionInput::None);
+			PrimaryWeapon = 4;
+		}
+		case "Shotgun":
+		{
+			SetPlayerAmmoMax(_Player, CSmMode::EWeapon::Laser, 0);
+			SetPlayerAmmoMax(_Player, CSmMode::EWeapon::Nucleus, 0);
+			SetPlayerAmmoMax(_Player, CSmMode::EWeapon::Arrow, 0);
+			ActionLoad(_Player, CSmMode::EActionSlot::Slot_A, G_CustomShotgun);
+			ActionBind(_Player, CSmMode::EActionSlot::Slot_A, CSmMode::EActionInput::Weapon);
+			_Player.AmmoGain = 0.85;
+			PrimaryWeapon = 5;
+		}
+		case "BlowBomb":
+		{
+			SetPlayerAmmoMax(_Player, CSmMode::EWeapon::Laser, 0);
+			SetPlayerAmmoMax(_Player, CSmMode::EWeapon::Nucleus, 0);
+			SetPlayerAmmoMax(_Player, CSmMode::EWeapon::Arrow, 0);
+			ActionLoad(_Player, CSmMode::EActionSlot::Slot_A, G_CustomBlowBomb);
+			ActionBind(_Player, CSmMode::EActionSlot::Slot_A, CSmMode::EActionInput::Weapon);
+			_Player.AmmoGain = 0.95;
+			PrimaryWeapon = 6;
+		}
+		default: return;
+	}	
+	_Player.StaminaMax = C_StaminaWith2Weapons;
+	_Player.StaminaGain = C_StaminaWith2Weapons;
+	_Player.SpeedPower = C_SpeedWith2Weapons;
+	declare PUI <=> UIManager.GetUI(_Player);
+	if(PUI != Null)
+	{
+		declare netwrite Net_PrimaryWeapon for PUI = 0;
+		Net_PrimaryWeapon = PrimaryWeapon;
+	}	
+	foreach(Player in Players)
+	{
+		declare UI <=> UIManager.GetUI(Player);
+		if (UI != Null) 
+		{ 
+			declare netwrite Integer[Text] Net_PrimaryWeapons for UI;
+			Net_PrimaryWeapons[_Player.Login] = PrimaryWeapon;
+		}
+	}		
+
+	UIManager.UIAll.SendNotice(
+		TextLib::Compose(_("|Player picked up item|$<%1$> picked up %2"), _Player.Name, _Weapon), 
+		CUIConfig::ENoticeLevel::Default , Null, 
+		CUIConfig::EAvatarVariant::Happy, 
+		CUIConfig::EUISound::Silence, 0
+	);
+}
+
+Void LT_PickUpObject(CSmPlayer _Player, CSmObject _Object) {
+	if (_Player == Null || _Object == Null) return;
+	
+	declare Tag for _Object = "";
+	declare AnchorId for _Object = NullId;
+	
+	if (!MapLandmarks_ObjectAnchor.existskey(AnchorId)) return;
+	declare MapLandmark <=> MapLandmarks_ObjectAnchor[AnchorId];
+	declare ObjectSpawned for MapLandmark = False;
+	declare ObjectNextSpawn for MapLandmark = Now;
+	ObjectSpawned = False;
+	if(MB_CurrentSection == "WarmUp") ObjectNextSpawn = Now + 5000;
+	else
+	{
+		if (S_ItemSpawnTime > 5) ObjectNextSpawn = Now + (S_ItemSpawnTime*1000);
+		else ObjectNextSpawn = Now + 5000;
+	}
+	
+	switch (Tag) 
+	{
+		case C_Object["Laser"]: LT_PickUpWeapon(_Player, Tag);
+		case C_Object["PlasmaGun"]: LT_PickUpWeapon(_Player, Tag);
+		case C_Object["Grenades"]: LT_PickUpWeapon(_Player, Tag);
+		case C_Object["Nucleus"]: LT_PickUpWeapon(_Player, Tag);
+		case C_Object["Shotgun"]: LT_PickUpWeapon(_Player, Tag);
+		case C_Object["BlowBomb"]: LT_PickUpWeapon(_Player, Tag);
+	}
+	
+	_Object.SetPlayer(_Player);
+	ObjectDestroy(_Object);
+}
+
+// Change weapon via mouse scroll
+Void LT_CycleWeapon(CSmPlayer _Player, Integer _Step) 
+{
+	if(_Player == Null) return;
+	declare PrimaryWeapon for _Player = 0;
+	declare SecondaryWeapon for _Player = 1;
+	declare CurrentWeaponSlot for _Player = 2;
+	declare Step = 0;
+	if (_Step < 0) Step = -1;
+	else if (_Step > 0) Step = 1;
+
+	if(Step != 0)
+	{
+		switch(CurrentWeaponSlot)
+		{
+			case 1:
+			{
+				switch(SecondaryWeapon)
+				{
+					case 1:
+					{
+						SetPlayerAmmoMax(_Player, CSmMode::EWeapon::Rocket, 4);
+						SetPlayerWeapon(_Player, CSmMode::EWeapon::Rocket, False);
+						//ActionLoad(_Player, CSmMode::EActionSlot::Slot_A, NullId);
+						ActionBind(_Player, CSmMode::EActionSlot::Slot_A, CSmMode::EActionInput::None);
+						ActionBind(_Player, CSmMode::EActionSlot::Slot_B, CSmMode::EActionInput::None);
+						_Player.AmmoGain = 1.;
+					}
+					case 2:
+					{
+						SetPlayerAmmoMax(_Player, CSmMode::EWeapon::Rocket, 0);
+						//ActionLoad(_Player, CSmMode::EActionSlot::Slot_A, NullId);
+						ActionLoad(_Player, CSmMode::EActionSlot::Slot_B, G_CustomBounceRocket);
+						ActionBind(_Player, CSmMode::EActionSlot::Slot_A, CSmMode::EActionInput::None);
+						ActionBind(_Player, CSmMode::EActionSlot::Slot_B, CSmMode::EActionInput::Weapon);
+						_Player.AmmoGain = 1.;
+					}
+					case 3:
+					{
+						SetPlayerAmmoMax(_Player, CSmMode::EWeapon::Rocket, 0);
+						//ActionLoad(_Player, CSmMode::EActionSlot::Slot_A, NullId);
+						ActionLoad(_Player, CSmMode::EActionSlot::Slot_B, G_CustomElectricPistol);
+						ActionBind(_Player, CSmMode::EActionSlot::Slot_A, CSmMode::EActionInput::None);
+						ActionBind(_Player, CSmMode::EActionSlot::Slot_B, CSmMode::EActionInput::Weapon);
+						_Player.AmmoGain = 1.;
+					}
+				}
+				CurrentWeaponSlot = 2;
+			}
+			case 2:
+			{
+				if(PrimaryWeapon < 1) return;
+				switch(PrimaryWeapon)
+				{
+					case 1:
+					{
+						SetPlayerAmmoMax(_Player, CSmMode::EWeapon::Laser, 1);
+						SetPlayerWeapon(_Player, CSmMode::EWeapon::Laser, False);
+						ActionLoad(_Player, CSmMode::EActionSlot::Slot_A, NullId);
+						ActionBind(_Player, CSmMode::EActionSlot::Slot_A, CSmMode::EActionInput::None);
+						ActionBind(_Player, CSmMode::EActionSlot::Slot_B, CSmMode::EActionInput::None);
+						_Player.AmmoGain = 0.85;
+					}
+					case 2:
+					{
+						SetPlayerAmmoMax(_Player, CSmMode::EWeapon::Laser, 0);
+						SetPlayerAmmoMax(_Player, CSmMode::EWeapon::Nucleus, 0);
+						SetPlayerAmmoMax(_Player, CSmMode::EWeapon::Arrow, 0);
+						ActionLoad(_Player, CSmMode::EActionSlot::Slot_A, G_CustomPlasmaGun);
+						ActionBind(_Player, CSmMode::EActionSlot::Slot_A, CSmMode::EActionInput::Weapon);
+						_Player.AmmoGain = 1.;
+					}
+					case 3:
+					{
+						SetPlayerAmmoMax(_Player, CSmMode::EWeapon::Laser, 0);
+						SetPlayerAmmoMax(_Player, CSmMode::EWeapon::Nucleus, 0);
+						SetPlayerAmmoMax(_Player, CSmMode::EWeapon::Arrow, 0);
+						ActionLoad(_Player, CSmMode::EActionSlot::Slot_A, G_CustomGrenades);
+						ActionBind(_Player, CSmMode::EActionSlot::Slot_A, CSmMode::EActionInput::Weapon);
+						_Player.AmmoGain = 1.;
+					}	
+					case 4:
+					{
+						SetPlayerAmmoMax(_Player, CSmMode::EWeapon::Nucleus, 2);
+						SetPlayerWeapon(_Player, CSmMode::EWeapon::Nucleus, False);
+						ActionLoad(_Player, CSmMode::EActionSlot::Slot_A, NullId);
+						ActionBind(_Player, CSmMode::EActionSlot::Slot_A, CSmMode::EActionInput::None);
+						ActionBind(_Player, CSmMode::EActionSlot::Slot_B, CSmMode::EActionInput::None);
+						_Player.AmmoGain = 0.65;
+					}
+					case 5:
+					{
+						SetPlayerAmmoMax(_Player, CSmMode::EWeapon::Laser, 0);
+						SetPlayerAmmoMax(_Player, CSmMode::EWeapon::Nucleus, 0);
+						SetPlayerAmmoMax(_Player, CSmMode::EWeapon::Arrow, 0);
+						ActionLoad(_Player, CSmMode::EActionSlot::Slot_A, G_CustomShotgun);
+						ActionBind(_Player, CSmMode::EActionSlot::Slot_A, CSmMode::EActionInput::Weapon);
+						_Player.AmmoGain = 1.;
+					}
+					case 6:
+					{
+						SetPlayerAmmoMax(_Player, CSmMode::EWeapon::Laser, 0);
+						SetPlayerAmmoMax(_Player, CSmMode::EWeapon::Nucleus, 0);
+						SetPlayerAmmoMax(_Player, CSmMode::EWeapon::Arrow, 0);
+						ActionLoad(_Player, CSmMode::EActionSlot::Slot_A, G_CustomBlowBomb);
+						ActionBind(_Player, CSmMode::EActionSlot::Slot_A, CSmMode::EActionInput::Weapon);
+						_Player.AmmoGain = 1.;
+					}	
+				}
+				CurrentWeaponSlot = 1;
+			}
+		}
+	}
+}
+
+Void LT_SwitchWeapon(CSmPlayer _Player, CSmModeEvent::EActionInput _Input) {
+	if(_Player == Null) return;
+	declare PrimaryWeapon for _Player = 1;
+	declare SecondaryWeapon for _Player = 1;
+	declare CurrentWeaponSlot for _Player = 2;
+	
+	switch (_Input) {
+		// Primary weapon
+		case CSmModeEvent::EActionInput::Activable1: 
+		{
+			switch(PrimaryWeapon)
+			{
+				case 1:
+				{
+					SetPlayerAmmoMax(_Player, CSmMode::EWeapon::Laser, 1);
+					SetPlayerWeapon(_Player, CSmMode::EWeapon::Laser, False);
+					ActionLoad(_Player, CSmMode::EActionSlot::Slot_A, NullId);
+					ActionBind(_Player, CSmMode::EActionSlot::Slot_A, CSmMode::EActionInput::None);
+					ActionBind(_Player, CSmMode::EActionSlot::Slot_B, CSmMode::EActionInput::None);
+					_Player.AmmoGain = 0.85;
+				}
+				case 2:
+				{
+					SetPlayerAmmoMax(_Player, CSmMode::EWeapon::Laser, 0);
+					SetPlayerAmmoMax(_Player, CSmMode::EWeapon::Nucleus, 0);
+					SetPlayerAmmoMax(_Player, CSmMode::EWeapon::Arrow, 0);
+					ActionLoad(_Player, CSmMode::EActionSlot::Slot_A, G_CustomPlasmaGun);
+					ActionBind(_Player, CSmMode::EActionSlot::Slot_A, CSmMode::EActionInput::Weapon);
+					_Player.AmmoGain = 1.;
+				}
+				case 3:
+				{
+					SetPlayerAmmoMax(_Player, CSmMode::EWeapon::Laser, 0);
+					SetPlayerAmmoMax(_Player, CSmMode::EWeapon::Nucleus, 0);
+					SetPlayerAmmoMax(_Player, CSmMode::EWeapon::Arrow, 0);
+					ActionLoad(_Player, CSmMode::EActionSlot::Slot_A, G_CustomGrenades);
+					ActionBind(_Player, CSmMode::EActionSlot::Slot_A, CSmMode::EActionInput::Weapon);
+					_Player.AmmoGain = 1.;
+				}
+				case 4:
+				{
+					SetPlayerAmmoMax(_Player, CSmMode::EWeapon::Nucleus, 2);
+					SetPlayerWeapon(_Player, CSmMode::EWeapon::Nucleus, False);
+					ActionLoad(_Player, CSmMode::EActionSlot::Slot_A, NullId);
+					ActionBind(_Player, CSmMode::EActionSlot::Slot_A, CSmMode::EActionInput::None);
+					ActionBind(_Player, CSmMode::EActionSlot::Slot_B, CSmMode::EActionInput::None);
+					_Player.AmmoGain = 0.65;
+				}
+				case 5:
+				{
+					SetPlayerAmmoMax(_Player, CSmMode::EWeapon::Laser, 0);
+					SetPlayerAmmoMax(_Player, CSmMode::EWeapon::Nucleus, 0);
+					SetPlayerAmmoMax(_Player, CSmMode::EWeapon::Arrow, 0);
+					ActionLoad(_Player, CSmMode::EActionSlot::Slot_A, G_CustomShotgun);
+					ActionBind(_Player, CSmMode::EActionSlot::Slot_A, CSmMode::EActionInput::Weapon);
+					_Player.AmmoGain = 1.;
+				}
+				case 6:
+				{
+					SetPlayerAmmoMax(_Player, CSmMode::EWeapon::Laser, 0);
+					SetPlayerAmmoMax(_Player, CSmMode::EWeapon::Nucleus, 0);
+					SetPlayerAmmoMax(_Player, CSmMode::EWeapon::Arrow, 0);
+					ActionLoad(_Player, CSmMode::EActionSlot::Slot_A, G_CustomBlowBomb);
+					ActionBind(_Player, CSmMode::EActionSlot::Slot_A, CSmMode::EActionInput::Weapon);
+					_Player.AmmoGain = 1.;
+				}
+				default:
+				{
+					switch(SecondaryWeapon)
+					{
+						case 1:
+						{
+							SetPlayerAmmoMax(_Player, CSmMode::EWeapon::Rocket, 4);
+							SetPlayerWeapon(_Player, CSmMode::EWeapon::Rocket, False);
+							//ActionLoad(_Player, CSmMode::EActionSlot::Slot_A, NullId);
+							ActionBind(_Player, CSmMode::EActionSlot::Slot_A, CSmMode::EActionInput::None);
+							ActionBind(_Player, CSmMode::EActionSlot::Slot_B, CSmMode::EActionInput::None);
+							_Player.AmmoGain = 1.;
+						}
+						case 2:
+						{
+							SetPlayerAmmoMax(_Player, CSmMode::EWeapon::Rocket, 0);
+							//ActionLoad(_Player, CSmMode::EActionSlot::Slot_A, NullId);
+							ActionLoad(_Player, CSmMode::EActionSlot::Slot_B, G_CustomBounceRocket);
+							ActionBind(_Player, CSmMode::EActionSlot::Slot_A, CSmMode::EActionInput::None);
+							ActionBind(_Player, CSmMode::EActionSlot::Slot_B, CSmMode::EActionInput::Weapon);
+							_Player.AmmoGain = 1.;
+						}
+						case 3:
+						{
+							SetPlayerAmmoMax(_Player, CSmMode::EWeapon::Rocket, 0);
+							//ActionLoad(_Player, CSmMode::EActionSlot::Slot_A, NullId);
+							ActionLoad(_Player, CSmMode::EActionSlot::Slot_B, G_CustomElectricPistol);
+							ActionBind(_Player, CSmMode::EActionSlot::Slot_A, CSmMode::EActionInput::None);
+							ActionBind(_Player, CSmMode::EActionSlot::Slot_B, CSmMode::EActionInput::Weapon);
+							_Player.AmmoGain = 1.;
+						}
+					}	
+				}
+			}
+			CurrentWeaponSlot = 1;
+		}
+		// Secondary weapon
+		case CSmModeEvent::EActionInput::Activable2: 
+		{
+			switch(SecondaryWeapon)
+			{
+				case 1:
+				{
+					SetPlayerAmmoMax(_Player, CSmMode::EWeapon::Rocket, 4);
+					SetPlayerWeapon(_Player, CSmMode::EWeapon::Rocket, False);
+					//SetPlayerAmmo(_Player, CSmMode::EWeapon::Laser, 0);
+					//SetPlayerAmmo(_Player, CSmMode::EWeapon::Nucleus, 0);
+					//ActionLoad(_Player, CSmMode::EActionSlot::Slot_A, NullId);
+					ActionBind(_Player, CSmMode::EActionSlot::Slot_A, CSmMode::EActionInput::None);
+					ActionBind(_Player, CSmMode::EActionSlot::Slot_B, CSmMode::EActionInput::None);
+					_Player.AmmoGain = 1.;
+				}
+				case 2:
+				{
+					SetPlayerAmmoMax(_Player, CSmMode::EWeapon::Rocket, 0);
+					//SetPlayerAmmo(_Player, CSmMode::EWeapon::Laser, 0);
+					//SetPlayerAmmo(_Player, CSmMode::EWeapon::Nucleus, 0);
+					SetPlayerWeapon(_Player, CSmMode::EWeapon::Rocket, False);
+					//ActionLoad(_Player, CSmMode::EActionSlot::Slot_A, NullId);
+					ActionLoad(_Player, CSmMode::EActionSlot::Slot_B, G_CustomBounceRocket);
+					ActionBind(_Player, CSmMode::EActionSlot::Slot_A, CSmMode::EActionInput::None);
+					ActionBind(_Player, CSmMode::EActionSlot::Slot_B, CSmMode::EActionInput::Weapon);
+					_Player.AmmoGain = 1.;
+				}
+				case 3:
+				{
+					SetPlayerAmmoMax(_Player, CSmMode::EWeapon::Rocket, 0);
+					//SetPlayerAmmo(_Player, CSmMode::EWeapon::Laser, 0);
+					//SetPlayerAmmo(_Player, CSmMode::EWeapon::Nucleus, 0);
+					SetPlayerWeapon(_Player, CSmMode::EWeapon::Rocket, False);
+					//ActionLoad(_Player, CSmMode::EActionSlot::Slot_A, NullId);
+					ActionLoad(_Player, CSmMode::EActionSlot::Slot_B, G_CustomElectricPistol);
+					ActionBind(_Player, CSmMode::EActionSlot::Slot_A, CSmMode::EActionInput::None);
+					ActionBind(_Player, CSmMode::EActionSlot::Slot_B, CSmMode::EActionInput::Weapon);
+					_Player.AmmoGain = 1.;
+				}
+			}	
+			CurrentWeaponSlot = 2;
+		}
+	}
+}
+
+// Update the layer with alive players
+Text Private_UpdateLayerPlayers()
+{
+	declare Panels = [1 => "", 2 => ""];
+	declare Text ArmorImage = C_ImgBaseDir^"ShieldWhite.dds";
+	declare Clan1Color 	= Teams[0].ColorPrimary.X^" "^Teams[0].ColorPrimary.Y^" "^Teams[0].ColorPrimary.Z;
+	declare Clan2Color 	= Teams[1].ColorPrimary.X^" "^Teams[1].ColorPrimary.Y^" "^Teams[1].ColorPrimary.Z;
+	
+	declare ModelArmorsLeft = """
+<framemodel id="Framemodel_ArmorsLeft">
+	<gauge posn="-4 5.5 2" sizen="40 14" drawbg="0" color="0007" ratio="0.989" drawblockbg="0" />
+	<gauge posn="-4 5.5 1" sizen="40 14" drawbg="0" drawblockbg="0" color="{{{Clan1Color}}}F" id="Gauge_Armor" />
+	<quad posn="0 -1.8 3" sizen="3 3" bgcolor="FFFA" halign="left" valign="center" id="Quad_Avatar" />
+	<label posn="5 -0.2 3" sizen="21 5" scale="0.9" id="Label_Pseudo" />
+	<label posn="29 0 3" sizen="3 5" style="TextRaceChrono" textsize="2" id="Label_Armors" />
+	<quad posn="33 -1.8 3" sizen="4.3 4.3" halign="left" valign="center" id="Quad_SecondaryWeapon" />
+	<quad posn="37.2 -1.8 3" sizen="4.3 4.3" halign="left" valign="center" id="Quad_PrimaryWeapon" />
+</framemodel>""";
+	
+	declare ModelArmorsRight = """
+<framemodel id="Framemodel_ArmorsRight">
+	<gauge posn="4 5.5 2" sizen="40 14" halign="right" drawbg="0" color="0007" ratio="0.989" drawblockbg="0" />
+	<gauge posn="4 5.5 1" sizen="40 14" halign="right" drawbg="0" drawblockbg="0" color="{{{Clan2Color}}}F" id="Gauge_Armor" />
+	<quad posn="0 -1.8 3" sizen="3 3" bgcolor="FFFA" halign="right" valign="center" id="Quad_Avatar" />
+	<label posn="-5 -0.2 3" sizen="21 5" halign="right" scale="0.9" id="Label_Pseudo" />
+	<label posn="-29 0 3" sizen="3 5" halign="right" style="TextRaceChrono" textsize="2" id="Label_Armors" />
+	<quad posn="-33 -1.8 3" sizen="4.3 4.3" halign="right" valign="center" id="Quad_SecondaryWeapon" />
+	<quad posn="-37.2 -1.8 3" sizen="4.3 4.3" halign="right" valign="center" id="Quad_PrimaryWeapon" />
+</framemodel>""";
+	
+	
+	for (I, 0, 15) {
+		Panels[1] ^= """<frameinstance posn="0 {{{-I*4.3}}}" modelid="Framemodel_ArmorsLeft" id="Frame_PlayerArmors_{{{I+1}}}" />""";
+		Panels[2] ^= """<frameinstance posn="0 {{{-I*4.3}}}" modelid="Framemodel_ArmorsRight" id="Frame_PlayerArmors_{{{I+1}}}" />""";
+	}
+	
+	declare Team1Name 	= Teams[0].ColorizedName;
+	declare Team2Name 	= Teams[1].ColorizedName;
+	
+	return """
+{{{ModelArmorsLeft}}}
+{{{ModelArmorsRight}}}
+<frame class="LibCustomUI_Module" id="PlayersList_1">
+<frame posn="-161 70 2" id="Frame_PanelLeft">
+	<format textemboss="1" textsize="2" />
+	<frame posn="2 -7 1" id="Frame_PlayersList">
+		{{{Panels[1]}}}
+	</frame>
+	<quad posn="-3 -2 0" sizen="44 5.5" style="EnergyBar" substyle="BgText"/>
+	<label posn="4 -3" sizen="25 16" text="{{{Team1Name}}}" />
+	<quad posn="30.5 -3 3" sizen="3 3" image="{{{ArmorImage}}}" />
+	<label posn="35 -3 3" style="TextRaceChrono" textsize="2" id="Label_ArmorsLeft" />
+</frame>
+</frame>
+<frame class="LibCustomUI_Module" id="PlayersList_2">
+<frame posn="160 70 2" halign="right" id="Frame_PanelRight">
+	<format textemboss="1" textsize="2" />
+	<frame posn="-2 -7 1" halign="right" id="Frame_PlayersList">
+		{{{Panels[2]}}}
+	</frame>
+	<quad posn="3 -2 0" halign="right" sizen="44 5.5" style="EnergyBar" substyle="BgText"/>
+	<label posn="-4 -3" halign="right" sizen="25 16" text="{{{Team2Name}}}" />
+	<quad posn="-30.5 -3 3" halign="right" sizen="3 3" image="{{{ArmorImage}}}" />
+	<label posn="-35 -3 3" halign="right" style="TextRaceChrono" textsize="2" id="Label_ArmorsLeft" />
+</frame>
+</frame>
+<frame posn="159 -83">
+	<label halign="right" style="CardButtonSmallS" text="Post feedback" scriptevents="1" url="http://forum.maniaplanet.com/viewtopic.php?f=10&t=28177&start=0" />
+</frame>
+<script><!--
+#Include "TextLib" as TL
+#Include "MathLib" as ML
+
+declare CMlFrame[Integer] Frames_Panel;
+declare CMlFrame[Integer] Frames_PlayersList;
+declare CMlLabel[Integer] Labels_ArmorsLeft;
+
+Void UpdatePlayersList() {
+	declare ClanPlayersArmors = [1 => Integer[Ident], 2 => Integer[Ident]];
+	declare TotalArmors = [1 => 0, 2 => 0];
+	
+	foreach (Player in Players) {
+		if (Player.Armor <= 0) continue;
+		declare PArmor = 0;
+		if(Player.Armor < 100) PArmor = 100;
+		else PArmor = Player.Armor;
+		if (!ClanPlayersArmors.existskey(Player.CurrentClan)) continue;
+		ClanPlayersArmors[Player.CurrentClan][Player.Id] = PArmor;
+		TotalArmors[Player.CurrentClan] += PArmor / 100;
+	}
+	
+	ClanPlayersArmors[1] = ClanPlayersArmors[1].sort();
+	ClanPlayersArmors[2] = ClanPlayersArmors[2].sort();
+	
+	for (ClanNb, 1, 2) {
+		declare I = 1;
+		declare PlayersArmors = ClanPlayersArmors[ClanNb];
+		foreach (PlayerId => PlayerArmor in PlayersArmors) {
+			if (!Players.existskey(PlayerId)) continue;
+			declare Player <=> Players[PlayerId];
+			declare Frame_PlayerArmors <=> (Frames_PlayersList[ClanNb].GetFirstChild("Frame_PlayerArmors_"^I) as CMlFrame);
+			I += 1;
+			if (Frame_PlayerArmors == Null) continue;
+			if (Frame_PlayerArmors != Null && !Frame_PlayerArmors.Visible) Frame_PlayerArmors.Visible = True;
+			declare Gauge_Armor <=> (Frame_PlayerArmors.GetFirstChild("Gauge_Armor") as CMlGauge);
+			declare Quad_Avatar <=> (Frame_PlayerArmors.GetFirstChild("Quad_Avatar") as CMlQuad);
+			declare Label_Pseudo <=> (Frame_PlayerArmors.GetFirstChild("Label_Pseudo") as CMlLabel);
+			declare Label_Armors <=> (Frame_PlayerArmors.GetFirstChild("Label_Armors") as CMlLabel);
+			declare Quad_SecondaryWeapon <=> (Frame_PlayerArmors.GetFirstChild("Quad_SecondaryWeapon") as CMlQuad);
+			declare Quad_PrimaryWeapon <=> (Frame_PlayerArmors.GetFirstChild("Quad_PrimaryWeapon") as CMlQuad);
+			
+			declare PArmor = 0;
+			if(Player.Armor < 100) PArmor = 100;
+			else PArmor = Player.Armor;
+			if (Player.ArmorMax > 0) 
+			{
+				declare Ratio = ML::ToReal(PArmor) / ML::ToReal(Player.ArmorMax);
+				if (Ratio >= 1.) Ratio = 0.989; ///< Avoid the bright white in the bar when ratio = 1.
+				Gauge_Armor.SetRatio(Ratio);
+			}
+			else
+				Gauge_Armor.SetRatio(0.);
+			Quad_Avatar.ChangeImageUrl("file://Avatars/"^Player.Login^"/Default");
+			Label_Pseudo.Value = Player.Name;
+			Label_Armors.Value = TL::ToText(PArmor/100);
+
+			declare netread Integer[Text] Net_SecondaryWeapons for UI;	
+			if(Net_SecondaryWeapons.existskey(Player.Login))
+			{
+				switch(Net_SecondaryWeapons[Player.Login])
+				{
+					case 1: Quad_SecondaryWeapon.ChangeImageUrl("{{{C_ImgModeDir}}}/IconWeaponRocket.dds");
+					case 2: Quad_SecondaryWeapon.ChangeImageUrl("{{{C_ImgModeDir}}}/IconWeaponBRocket.dds");
+					case 3: Quad_SecondaryWeapon.ChangeImageUrl("{{{C_ImgModeDir}}}/IconWeaponElectricPistol.dds");
+					default: Quad_SecondaryWeapon.ChangeImageUrl("{{{C_ImgModeDir}}}/IconWeaponRocket.dds");
+				}	
+			}
+			else Quad_SecondaryWeapon.ChangeImageUrl("{{{C_ImgModeDir}}}/IconWeaponRocket.dds");
+
+			declare netread Integer[Text] Net_PrimaryWeapons for UI;	
+			if(Net_PrimaryWeapons.existskey(Player.Login))
+			{
+				switch(Net_PrimaryWeapons[Player.Login])
+				{
+					case 1: Quad_PrimaryWeapon.ChangeImageUrl("{{{C_ImgModeDir}}}/IconWeaponLaser.dds");
+					case 2: Quad_PrimaryWeapon.ChangeImageUrl("{{{C_ImgModeDir}}}/IconWeaponPlasmaGun.dds");
+					case 3: Quad_PrimaryWeapon.ChangeImageUrl("{{{C_ImgModeDir}}}/IconWeaponGrenades.dds");
+					case 4: Quad_PrimaryWeapon.ChangeImageUrl("{{{C_ImgModeDir}}}/IconWeaponNucleus.dds");
+					case 5: Quad_PrimaryWeapon.ChangeImageUrl("{{{C_ImgModeDir}}}/IconWeaponShotgun.dds");
+					case 6: Quad_PrimaryWeapon.ChangeImageUrl("{{{C_ImgModeDir}}}/IconWeaponBlowBomb.dds");
+					default: Quad_PrimaryWeapon.ChangeImageUrl("");
+				}	
+			}
+			else Quad_PrimaryWeapon.ChangeImageUrl("");
+		}
+		for (J, I, Frames_PlayersList[ClanNb].Controls.count) {
+			declare Frame_PlayerArmors <=> (Frames_PlayersList[ClanNb].GetFirstChild("Frame_PlayerArmors_"^J) as CMlFrame);
+			if (Frame_PlayerArmors != Null && Frame_PlayerArmors.Visible) Frame_PlayerArmors.Visible = False;
+		}
+		
+		if (TotalArmors[ClanNb] > 0) {
+			if (!Labels_ArmorsLeft[ClanNb].Visible) Labels_ArmorsLeft[ClanNb].Visible = True;
+			Labels_ArmorsLeft[ClanNb].Value = TL::ToText(TotalArmors[ClanNb]);
+		} else {
+			if (Labels_ArmorsLeft[ClanNb].Visible) Labels_ArmorsLeft[ClanNb].Visible = False;
+		}
+	}
+	
+}
+
+main() {
+	Frames_Panel[1] <=> (Page.GetFirstChild("Frame_PanelLeft") as CMlFrame);
+	Frames_Panel[2] <=> (Page.GetFirstChild("Frame_PanelRight") as CMlFrame);
+	for (I, 1, 2) {
+		Frames_PlayersList[I]	<=> (Frames_Panel[I].GetFirstChild("Frame_PlayersList") as CMlFrame);
+		Labels_ArmorsLeft[I]	<=> (Frames_Panel[I].GetFirstChild("Label_ArmorsLeft")	as CMlLabel);
+	}
+	
+	foreach (Player in Players) {
+		declare PrevArmor for Player = -1;
+		PrevArmor = -1;
+	}
+	{{{CustomUI::InjectMLInit()}}}
+	
+	while (True) {
+		sleep(750);
+		
+		if (!PageIsVisible || InputPlayer == Null) continue;
+		
+		{{{CustomUI::InjectMLLoop()}}}
+		UpdatePlayersList();
+	}
+}
+--></script>""";
+}
+
+// Calculates skalar of two vectors
+Real Private_Skalar(Vec3 _Vec1, Vec3 _Vec2) {
+	return _Vec1[0]*_Vec2[0] + _Vec1[1]*_Vec2[1] + _Vec1[2]*_Vec2[2];
+}
+
+// Update the layer - class selection
+Text Private_UpdateLayerClassSelection() {
+	if(ServerShutdownRequested || MatchEndRequested)
+	{
+		MB_StopMap = True;
+		return "";
+	}	
+	declare Text ML = "";
+	ML = """
+<dico>
+   <language id="en">
+   	  <choose>Choose start weapon</choose>
+      <class1w>Rockets</class1w>
+      <class2w>Bouncing Rockets</class2w>
+      <class3w>Electric Pistol</class3w>
+      <rule1>- Now, You can choose one seconadry weapon. Click on weapon name to pick.</rule1>
+      <rule2>- Primary weapons you can get on map by collecting items.</rule2>
+      <rule3>- You can carry only one primary weapon.</rule3>
+      <rule4>- To switch weapons in-game, use 1 and 2 on your keyboard.</rule4>
+   </language>
+   <language id="fr">
+   	  <choose>Choose start weapon</choose>
+      <class1w>Roquettes</class1w>
+      <class2w>Roquettes rebondissantes</class2w>
+      <class3w>Pistolet électrique</class3w>
+      <rule1>- Now, You can choose one seconadry weapon. Click on weapon name to pick.</rule1>
+      <rule2>- Primary weapons you can get on map by collecting items.</rule2>
+      <rule3>- You can carry only one primary weapon.</rule3>
+      <rule4>- To switch weapons in-game, use 1 and 2 on your keyboard.</rule4>
+   </language>
+   <language id="ru">
+   	  <choose>Choose start weapon</choose>
+      <class1w>Ракетчик</class1w>
+      <class2w>Отскакивающие Ракеты</class2w>
+      <class3w>Электрический Пистолет</class3w>
+      <rule1>- Now, You can choose one seconadry weapon. Click on weapon name to pick.</rule1>
+      <rule2>- Primary weapons you can get on map by collecting items.</rule2>
+      <rule3>- You can carry only one primary weapon.</rule3>
+      <rule4>- To switch weapons in-game, use 1 and 2 on your keyboard.</rule4>
+   </language>
+   <language id="it">
+   	  <choose>Choose start weapon</choose>
+      <class1w>Razzi</class1w>
+      <class2w>Razzi rimbalzanti</class2w>
+      <class3w>Pistola elettrica</class3w>
+      <rule1>- Now, You can choose one seconadry weapon. Click on weapon name to pick.</rule1>
+      <rule2>- Primary weapons you can get on map by collecting items.</rule2>
+      <rule3>- You can carry only one primary weapon.</rule3>
+      <rule4>- To switch weapons in-game, use 1 and 2 on your keyboard.</rule4>
+   </language>
+   <language id="de">
+   	  <choose>Choose start weapon</choose>
+      <class1w>Raketen</class1w>
+      <class2w>Abprallende Granaten</class2w>
+      <class3w>Elektrische Pistole</class3w>
+      <rule1>- Now, You can choose one seconadry weapon. Click on weapon name to pick.</rule1>
+      <rule2>- Primary weapons you can get on map by collecting items.</rule2>
+      <rule3>- You can carry only one primary weapon.</rule3>
+      <rule4>- To switch weapons in-game, use 1 and 2 on your keyboard.</rule4>
+   </language>
+   <language id="pl">
+   	  <choose>Wybierz broń startową</choose>
+      <class1w>Rakiety</class1w>
+      <class2w>Rakiety odbijalne</class2w>
+      <class3w>Pistolet elektryczny</class3w>
+      <rule1>- Teraz, możesz wybrać jedną z 3 broni podręcznych. Kliknij na nazwę by wybrać.</rule1>
+      <rule2>- Broń główną możesz zdobyć przez podniesienie przedmiotu znajdującego się na mapie.</rule2>
+      <rule3>- Możesz naraz posiadać tylko 1 broń główną.</rule3>
+      <rule4>- By zmienić broń podczas rozgrywki, używaj klawiszy 1 i 2.</rule4>
+   </language>
+</dico>
+<script><!--
+main() 
+{
+	declare netwrite Net_SecondaryWeapon for UI = 1;
+	declare Bg1 <=> (Page.GetFirstChild("Bg1") as CMlLabel);
+	declare Bg2 <=> (Page.GetFirstChild("Bg2") as CMlLabel);
+	declare Bg3 <=> (Page.GetFirstChild("Bg3") as CMlLabel);
+
+	Bg1.Hide(); Bg2.Hide(); Bg3.Hide();
+	
+	while (True) 
+	{
+		yield;
+
+		if (InputPlayer == Null) continue;
+		
+		foreach (Event in PendingEvents) 
+		{
+			switch (Event.Type) 
+			{
+				case CMlEvent::Type::MouseClick: 
+				{
+					if(Event.ControlId == "Class1") Net_SecondaryWeapon = 1;
+					else if(Event.ControlId == "Class2") Net_SecondaryWeapon = 2;
+					else if(Event.ControlId == "Class3") Net_SecondaryWeapon = 3; 
+				}
+			}
+		}
+		
+		switch (Net_SecondaryWeapon) 
+		{
+			case 1: { Bg1.Show(); Bg2.Hide(); Bg3.Hide(); }
+			case 2: { Bg1.Hide(); Bg2.Show(); Bg3.Hide(); }
+			case 3: { Bg1.Hide(); Bg2.Hide(); Bg3.Show(); }
+		}
+	}
+}
+--></script>
+<frame>
+	<quad posn="0 0 0" sizen="180 110" halign="center" valign="center" image="{{{C_ImgModeDir}}}/bigboard-center.dds"/>
+	<label posn="0 43 0" sizen="59.3 3" textid="choose" textemboss="1" scale="2" style="TextTitle3" halign="center"/>
+	<frame posn="-80 33 2">
+		<quad sizen="50 35" style="EnergyBar"/>
+		<quad posn="0 0 1" sizen="50 35" halign="left" valign="top" style="Bgs1" substyle="BgTitle3_4" id="Bg1" scriptevents="1"/>
+		<label posn="3 -2.78 2" sizen="0 0" textid="class1w" style="CardButtonMediumL" halign="left" valign="top" scriptevents="1" id="Class1"/>
+		<quad posn="4 -13 2" sizen="18 15" image="{{{C_ImgModeDir}}}/IconWeaponRocket.dds"/>
+		<label posn="29 -19 2" sizen="16 6" text="x{{{C_RocketsAmmo}}}" style="TextTitle3" textemboss="1" textsize="8"/>
+	</frame>
+	<frame posn="-25 33 2">
+		<quad sizen="50 35" style="EnergyBar"/>
+		<quad posn="0 0 1" sizen="50 35" halign="left" valign="top" style="Bgs1" substyle="BgTitle3_4" id="Bg2" scriptevents="1"/>
+		<label posn="3 -2.78 2" sizen="0 0" textid="class2w" style="CardButtonMediumL" halign="left" valign="top" scriptevents="1" id="Class2"/>
+		<quad posn="4 -13 2" sizen="18 15" image="{{{C_ImgModeDir}}}/IconWeaponBRocket.dds"/>
+		<label posn="29 -19 2" sizen="16 6" text="x{{{C_BRocketsAmmo}}}" style="TextTitle3" textemboss="1" textsize="8"/>
+	</frame>
+	<frame posn="30 33 2">
+		<quad sizen="50 35" style="EnergyBar"/>
+		<quad posn="0 0 1" sizen="50 35" halign="left" valign="top" style="Bgs1" substyle="BgTitle3_4" id="Bg3" scriptevents="1"/>
+		<label posn="3 -2.78 2" sizen="0 0" textid="class3w" style="CardButtonMediumL" halign="left" valign="top" scriptevents="1" id="Class3"/>
+		<quad posn="4 -13 2" sizen="18 15" image="{{{C_ImgModeDir}}}/IconWeaponElectricPistol.dds"/>
+		<label posn="29 -19 2" sizen="16 6" text="x{{{C_PistolAmmo}}}" style="TextTitle3" textemboss="1" textsize="8"/>
+	</frame>
+	<frame posn="-85 -12 2">
+		<label posn="1 3 0" sizen="167 4" textid="rule1" style="TextButtonMedium"/>
+		<label posn="1 -2 0" sizen="167 4" textid="rule2" style="TextButtonMedium"/>
+		<label posn="1 -7 0" sizen="167 4" textid="rule3" style="TextButtonMedium"/>
+		<label posn="1 -12 0" sizen="167 4" textid="rule4" style="TextButtonMedium"/>
+		<quad posn="2 -19 0" sizen="16 14" image="{{{C_ImgModeDir}}}/Grenades.png"/>
+		<quad posn="32 -19 0" sizen="16 14" image="{{{C_ImgModeDir}}}/Shotgun.png"/>
+		<quad posn="62 -19 0" sizen="16 14" image="{{{C_ImgModeDir}}}/Laser.png"/>
+		<quad posn="92 -19 0" sizen="16 14" image="{{{C_ImgModeDir}}}/Nucleus.png"/>
+		<quad posn="122 -19 0" sizen="16 14" image="{{{C_ImgModeDir}}}/PlasmaGun.png"/>
+		<quad posn="152 -19 0" sizen="16 14" image="{{{C_ImgModeDir}}}/BlowBomb.png"/>
+	</frame>
+</frame>
+""";
+	
+	return ML;
+}
+
+Void LT_SpawnWeaponItems() {
+	foreach (MapLandmark in MapLandmarks_ObjectAnchor) {
+		declare ObjectAnchor <=> MapLandmark.ObjectAnchor;
+		if (ObjectAnchor == Null) continue;
+		
+		declare ObjectSpawned for MapLandmark = False;
+		declare ObjectNextSpawn for MapLandmark = Now;
+		if (ObjectSpawned) continue;
+		if (ObjectNextSpawn > Now) continue;
+		
+		declare CSmObject Object;
+		switch (MapLandmark.Tag) {
+			case C_Object["Laser"]			: Object = ObjectCreate(G_ObjectId[C_Object["Laser"]]);
+			case C_Object["PlasmaGun"]		: Object = ObjectCreate(G_ObjectId[C_Object["PlasmaGun"]]);
+			case C_Object["Grenades"]		: Object = ObjectCreate(G_ObjectId[C_Object["Grenades"]]);
+			case C_Object["Nucleus"]		: Object = ObjectCreate(G_ObjectId[C_Object["Nucleus"]]);
+			case C_Object["Shotgun"]		: Object = ObjectCreate(G_ObjectId[C_Object["Shotgun"]]);
+			case C_Object["BlowBomb"]		: Object = ObjectCreate(G_ObjectId[C_Object["BlowBomb"]]);
+		}
+		if (Object != Null) {
+			declare AnchorId for Object = NullId;
+			declare Tag for Object = MapLandmark.Tag;
+			AnchorId = MapLandmark.Id;
+			Tag = MapLandmark.Tag;
+			ObjectSpawned = True;
+			Object.SetAnchor(ObjectAnchor);
+		}
+	}
+}
+
+Void LT_SetRoundTimer(Integer _Var)
+{
+	StartTime = Now;
+	if (_Var > 0) EndTime = Now + (_Var*1000) + 3000;
+	else EndTime = Now;
+	UIManager.UIAll.CountdownEndTime = -1;
+}
+
+Void LT_UpdateHeader(Integer _Clan1Points, Integer _Clan2Points) 
+{
+	UIManager.UIAll.OverlayScoreSummary = True;
+	declare PlayerClan1Id = NullId;
+	declare PlayerClan2Id = NullId;
+	
+	foreach (Player in Players) {
+		if (PlayerClan1Id == NullId && Player.CurrentClan == 1) PlayerClan1Id = Player.Id;
+		if (PlayerClan2Id == NullId && Player.CurrentClan == 2) PlayerClan2Id = Player.Id;
+		if (PlayerClan1Id != NullId && PlayerClan2Id != NullId) break;
+	}
+	
+	if (PlayerClan1Id != NullId) UIManager.UIAll.ScoreSummary_Player1 = PlayerClan1Id;
+	else UIManager.UIAll.ScoreSummary_Player1 = NullId;
+	if (PlayerClan2Id != NullId) UIManager.UIAll.ScoreSummary_Player2 = PlayerClan2Id;
+	else UIManager.UIAll.ScoreSummary_Player2 = NullId;
+	UIManager.UIAll.ScoreSummary_Points1		= _Clan1Points;
+	//UIManager.UIAll.ScoreSummary_MatchPoints1	= ClanScores[1];
+	UIManager.UIAll.ScoreSummary_Points2		= _Clan2Points;
+	//UIManager.UIAll.ScoreSummary_MatchPoints2	= ClanScores[2];
+}
+
+Void LT_UpdateSTFooter(Integer _Points1, Integer _Points2)
+{
+	declare AllRounds = S_MapPointsLimit*2;
+	if(S_FinalRoundExceptDraw) AllRounds = S_MapPointsLimit*2+1;
+	if(S_FinalRoundExceptDraw && MB_SectionRoundNb == S_MapPointsLimit*2+1) ST2::SetFooterText(TextLib::Compose(_("Final Round")));
+	else ST2::SetFooterText(TextLib::Compose(_("Round: %1/%2 | Points to win: %3 | Remaining rounds: %4"), TextLib::ToText(MB_SectionRoundNb), TextLib::ToText(AllRounds), TextLib::ToText(S_MapPointsLimit+1), TextLib::ToText(S_MapPointsLimit*2-MB_SectionRoundNb)));
+	ModeStatusMessage = TextLib::Compose(_("Round: %1/%2 | Points to win: %3 | Score: %4:%5"), TextLib::ToText(MB_SectionRoundNb), TextLib::ToText(AllRounds), TextLib::ToText(S_MapPointsLimit+1), TextLib::ToText(_Points1), TextLib::ToText(_Points2));
+}
+
+Void LT_AnnounceHitDistance(Real _Distance, CSmPlayer _Player)
+{
+	declare UI <=> UIManager.GetUI(_Player);
+	if(UI == Null) return;
+	declare Distance = MathLib::NearestInteger(_Distance * 10) / 10.0;
+	Message::SendStatusMessage(_Player, TextLib::Compose(_("%1m hit!"), TextLib::ToText(Distance)), 2500, 1);
+	UI.SendNotice(TextLib::Compose(_("%1m hit!"), TextLib::ToText(Distance)), CUIConfig::ENoticeLevel::Default, Null, CUIConfig::EAvatarVariant::Default, CUIConfig::EUISound::Silence, 0);
+}
+
+Void LT_AnnounceRoundWin(Integer _Winner)
+{
+	if(_Winner > 0)
+	{
+		foreach(Player in Players)
+		{
+			declare MSG = "";
+			switch(Player.User.Language)
+			{
+				case "pl": MSG = "wygrali rundę.";
+				case "fr": MSG = "gagne la manche.";
+				case "it": MSG = "Hanno vinto il turno.";
+				case "de": MSG = "gewinnt die Runde.";
+				default: MSG = "wins the round.";
+			}
+			Message::SendBigMessage(Player, TextLib::Compose(_("%1 %2"), Teams[_Winner-1].ColorizedName, MSG), 6500, 0, CUIConfig::EUISound::Silence, 2);
+		}
+		foreach(Spectator in Spectators)
+		{
+			declare MSG = "";
+			switch(Spectator.User.Language)
+			{
+				case "pl": MSG = "wygrali rundę.";
+				case "fr": MSG = "gagne la manche.";
+				case "it": MSG = "Hanno vinto il turno.";
+				case "de": MSG = "gewinnt die Runde.";
+				default: MSG = "wins the round.";
+			}
+			Message::SendBigMessage(Spectator, TextLib::Compose(_("%1 %2"), Teams[_Winner-1].ColorizedName, MSG), 6500, 0, CUIConfig::EUISound::Silence, 2);
+		}
+	}	
+	else Message::SendBigMessage(TextLib::Compose(_("|Match|Draw")), 6500, 0, CUIConfig::EUISound::Silence, 0);
+}
+
+Void LT_AnnounceEliminationMessage(Integer _ClanNb, Integer _LeftPlayers)
+{
+	declare Sound = CUIConfig::EUISound::TieBreakPoint;
+	if(_LeftPlayers <= 0)
+	{
+		foreach(Player in Players)
+		{
+			declare MSG = "";
+			switch(Player.User.Language)
+			{
+				case "pl": MSG = "wyeliminowani!";
+				case "fr": MSG = "éliminé !";
+				case "ru": MSG = "уничтожена!";
+				case "it": MSG = "eliminati!!";
+				case "de": MSG = "eliminiert!";
+				default: MSG = "eliminated!";
+			}
+			Message::SendBigMessage(Player, TextLib::Compose(_("%1 %2"), Teams[_ClanNb].ColorizedName, MSG), 5000, 1, CUIConfig::EUISound::VictoryPoint, 0);
+		}
+		foreach(Spectator in Spectators)
+		{
+			declare MSG = "";
+			switch(Spectator.User.Language)
+			{
+				case "pl": MSG = "wyeliminowani!";
+				case "fr": MSG = "éliminé !";
+				case "ru": MSG = "уничтожена!";
+				case "it": MSG = "eliminati!";
+				case "de": MSG = "eliminiert!";
+				default: MSG = "eliminated!";
+			}
+			Message::SendBigMessage(Spectator, TextLib::Compose(_("%1 %2"), Teams[_ClanNb].ColorizedName, MSG), 5000, 1, CUIConfig::EUISound::VictoryPoint, 0);
+		}
+	}
+	else if (_LeftPlayers == 1)
+	{
+		foreach(Player in Players)
+		{
+			declare MSG = "";
+			switch(Player.User.Language)
+			{
+				case "pl": MSG = "Ostatni żyjący!";
+				case "fr": MSG = "Dernier homme en vie !";
+				case "ru": MSG = "Остался Последним!";
+				case "it": MSG = "Ultimo vivente!";
+				case "de": MSG = "Mann gegen Mann, der letzte gewinnt!";
+				default: MSG = "Last Man Standing!";
+			}
+			Message::SendStatusMessage(Player, TextLib::Compose(_("%1: %2"),Teams[_ClanNb].ColorizedName, MSG), 4000, 0, Sound, 0);
+		}
+		foreach(Spectator in Spectators)
+		{
+			declare MSG = "";
+			switch(Spectator.User.Language)
+			{
+				case "pl": MSG = "Ostatni żyjący!";
+				case "fr": MSG = "Dernier homme en vie !";
+				case "ru": MSG = "Остался Последним!";
+				case "it": MSG = "Ultimo vivente!";
+				case "de": MSG = "Mann gegen Mann, der letzte gewinnt!";
+				default: MSG = "Last Man Standing!";
+			}
+			Message::SendStatusMessage(Spectator, TextLib::Compose(_("%1: %2"),Teams[_ClanNb].ColorizedName, MSG), 4000, 0, Sound, 0);
+		}
+		//Sound::PlaySound("file://Media/Sounds/FireFight/lastman.ogg", -8., 300);
+	}
+	else
+	{
+		foreach(Player in Players)
+		{
+			declare MSG = "";
+			switch(Player.User.Language)
+			{
+				case "pl": MSG = "Pozostało %1 żywych w zespole %2";
+				case "fr": MSG = "%1 joueurs restant dans %2";
+				case "ru": MSG = "%1 игроков перешли в %2";
+				case "it": MSG = "Sono rimasti %1 viventi nella squadra %2";
+				case "de": MSG = "%1 Spieler übrig in %2";
+				default: MSG = "%1 players left in %2";
+			}
+			Message::SendStatusMessage(Player, TextLib::Compose(MSG,TextLib::ToText(_LeftPlayers), Teams[_ClanNb].ColorizedName), 3000, 0, Sound, 0);
+		}
+		foreach(Spectator in Spectators)
+		{
+			declare MSG = "";
+			switch(Spectator.User.Language)
+			{
+				case "pl": MSG = "Pozostało %1 żywych w zespole %2";
+				case "fr": MSG = "%1 joueurs restant dans %2";
+				case "ru": MSG = "%1 игроков перешли в %2";
+				case "it": MSG = "Sono rimasti %1 viventi nella squadra %2";
+				case "de": MSG = "%1 Spieler übrig in %2";
+				default: MSG = "%1 players left in %2";
+			}
+			Message::SendStatusMessage(Spectator, TextLib::Compose(MSG,TextLib::ToText(_LeftPlayers), Teams[_ClanNb].ColorizedName), 3500, 0, Sound, 0);
+		}
+	}	
+}
+
+Boolean LT_IsAfterHalfTime()
+{
+	if(MB_SectionRoundNb > S_MapPointsLimit) return True;
+	return False;
+}

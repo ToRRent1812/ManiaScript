@@ -1,9 +1,9 @@
-// Search and hack with dolars to get better weapon
+// Search and destroy with dolars to get better weapon
 #Extends "Modes/Shootmania/ShopCore.Script.txt"
 
-#Const CompatibleMapTypes	"OverloadArena"
+#Const CompatibleMapTypes	"SNDArena"
 #Const Version				"2014-09-21"
-#Const ScriptName			"Overload.Script.txt"
+#Const ScriptName			"SND.Script.txt"
 
 #Include "MathLib" as MathLib
 #Include "TextLib" as TextLib
@@ -15,8 +15,9 @@
 #Include "Libs/Nadeo/ShootMania/SpawnScreen.Script.txt" as SpawnScreen
 
 #Setting S_RoundTime			105		as _("Round time in seconds")
-#Setting S_PoleCaptureDuration	5		as _("Hacking time in seconds")
-#Setting S_MapPointsLimit		9		as _("Number of points to win the map")
+#Setting S_PlantingTime			4		as _("Planting/Defusing time in seconds")
+#Setting S_BombCountdown		35		as _("Bomb timer in seconds")
+#Setting S_MapPointsLimit		6		as _("Number of points to win the map")
 #Setting S_BlueBot 				0 		as _("Number of blue test bots")
 #Setting S_RedBot 				0 		as _("Number of red test bots")	
 // Clublinks settings
@@ -24,23 +25,24 @@
 #Setting S_ForceClublinkTeam1	""		as "<hidden>"	// Force the Clublink of team 1 (format: http://www.example.com/MyTeam.Club.xml)
 #Setting S_ForceClublinkTeam2	""		as "<hidden>"	// Force the Clublink of team 2 (format: http://www.example.com/MyTeam.Club.xml)
 
-#Const Description  _("RULES: Locate vulnerable point and do overload to win the round.")
+#Const Description   			_("RULES: Famous Counter-Strike game mode is finally on Shootmania.")
+
+#Const C_StateIdle 				0 	// Standard game state, attackers are trying to plant the bomb
+#Const C_StatePlanted 			1 	// When bomb was planted
+#Const C_StateExploded 			2 	// When bomb explode
+#Const C_StateDefused 			3 	// When bomb was defused
+
+#Const C_Object  				"Laser"
 
 declare Integer[Integer]			G_ClansMapPoints;		// Number of points cumulated on one map for each clan
 declare Integer[Integer]			G_PlayersAlive;			// How many players are alive in specific team
-declare Integer						G_Capturable; 			// Which checkpoint is capturable
+declare Integer						G_PlantedOn; 			// Where bomb was planted
+declare Integer 					G_GameState;			// Current game state
+declare CSmPlayer 					G_PlayerWithBomb;		// Player who has bomb
 declare Integer 					G_AttackingClan;		// Which clan is attacking
 declare Integer 					G_LastProgressUpdate;	// Time of the last progrresion layer update
 declare Integer 					G_LastSettingsUpdate; 	// Time of the last setting layer update
 declare Integer 					G_LastTempUpdate;
-
-// Globals caches the settings
-declare Integer 					G_RoundTime;
-declare Integer 					G_PoleCaptureDuration;
-declare Integer 					G_MapPointsLimit;
-declare Integer 					G_BuyTime;
-declare Integer 					G_BlueBot;
-declare Integer 					G_RedBot;
 
 ***LogVersion***
 ***
@@ -69,47 +71,28 @@ UseLaserSkewering	= False;
 UseAmmoBonusOnHit	= False;
 UsePlayerTagging 	= True;
 
-if(S_RoundTime < 30) G_RoundTime = 30;
-else G_RoundTime = S_RoundTime;
-
-if(S_PoleCaptureDuration < 1) G_PoleCaptureDuration = 1;
-else G_PoleCaptureDuration = S_PoleCaptureDuration;
-
-if(S_MapPointsLimit < 1) G_MapPointsLimit = 1;
-else G_MapPointsLimit = S_MapPointsLimit;
-
-if(S_BuyTime < 10) G_BuyTime = 10;
-else G_BuyTime = S_BuyTime;
-
-if(S_BlueBot <= 0) G_BlueBot = 0;
-else G_BlueBot = S_BlueBot;
-
-if(S_RedBot < 0) G_RedBot = 0;
-else G_RedBot = S_RedBot;
-
-declare ModeName = "Overload";
-declare ModeObjectives = TextLib::Compose(_("$<%1Access points: $>There are 3 access points, only one is vulnerable.\n$<%1Attackers: $>Find vulnerable access point and hack to win the round.\n$<%1Defenders: $>Protect vulnerable point by %2 sec. or eliminate attackers to win the round"), "$"^SpawnScreen::GetModeColor(), TextLib::ToText(S_RoundTime));
-declare ModeConditions = TextLib::Compose(_("$<%11. $>A game is divided in rounds.\n$<%12. $>The first team with %2 points wins the map.\n$<%13. $>Before round you can buy equipment using money.\n$<%14. $>You can earn money by hit, headshot, kill, capture, win and loss."), "$"^SpawnScreen::GetModeColor(), TextLib::ToText(S_MapPointsLimit+1));
+declare ModeName = "Search & Destroy";
+declare ModeObjectives = TextLib::Compose(_("$<%1Attackers: $>Plant the bomb on 1 bombsite and wait for explosion to win.\n$<%1Defenders: $>Protect bombsites by %2 sec. or eliminate attackers to win the round"), "$"^SpawnScreen::GetModeColor(), TextLib::ToText(S_RoundTime));
+declare ModeConditions = TextLib::Compose(_("$<%11. $>A game is divided in rounds.\n$<%12. $>The first team with %2 points wins the map.\n$<%13. $>Before round you can buy equipment using money.\n$<%14. $>You can earn money by hit, headshot, kill, capture, win and loss."), "$"^SpawnScreen::GetModeColor(), TextLib::ToText(S_MapPointsLimit));
 
 SpawnScreen::AddSubsection(_("Type"), _("Team versus Team"), 0.);
 SpawnScreen::AddSubsection(_("Objectives"), ModeObjectives, 20.);
 SpawnScreen::AddSubsection(_("Conditions"), ModeConditions, 55.);
 SpawnScreen::CreatePrettyRules(ModeName);
-ModeStatusMessage = _("RULES: Locate vulnerable point and do overload to win the round.");
 SM::SetupDefaultVisibility();
 
 // Init movable elements
 CustomUI::Load();
 CustomUI::Add("PlayersList_1", <-160., 67.>, <46., 90.>, "top", "left");
 CustomUI::Add("PlayersList_2", <160., 67.>, <46., 90.>, "top", "right");
-CustomUI::Add("Overload_GaugeCapture", <0., -45.>, <130., 20.>, "center", "center");
+CustomUI::Add("SND_GaugeCapture", <0., -45.>, <130., 20.>, "center", "center");
 CustomUI::Build();
 
 // Create layers
 Layers::Create("ProgressBar"); // Specific capture progress
 Layers::Create("Markers"); // markers layer
 Layers::Create("HUD"); // Hud layer when player is spawned
-Layers::Create("CapturableInfo"); // Additional layer with informations during buying
+Layers::Create("BombTimer"); // Hud layer replacing timer with bomb icon
 Layers::Create("RulesReminder", UpdateLayerRulesReminder());
 Layers::SetType("Markers", CUILayer::EUILayerType::Markers);
 Layers::SetType("RulesReminder", CUILayer::EUILayerType::CutScene);
@@ -137,54 +120,12 @@ ST2::SetColWidth("LibST_Name", 20.);
 ST2::SetColWidth("LibST_SMRoundPoints", 4.5);
 ST2::SetColWidth("LibST_SMPoints", 6.);
 ST2::Build("SM");
-***					
 
-***WhenCaptured***
-***
-if(LandmarkGauge.Sector.PlayersIds.count > 0)
-{
-	foreach (PlayerId in LandmarkGauge.Sector.PlayersIds) 
-	{
-		if (Players.existskey(PlayerId) && Players[PlayerId].Score != Null) 
-		{
-			declare CurrentCapGoals for Players[PlayerId].Score = 0;
-			CurrentCapGoals += 1;
-			declare UI <=> UIManager.GetUI(Players[PlayerId]);
-			if(UI != Null)
-			{
-				declare netwrite Net_Cash for UI = S_StartCash;
-				Net_Cash += C_CashForCapture;
-			}	
-			ST2::SetColValue("ST_Captured", Players[PlayerId].Score, "$1F1"^TextLib::ToText(CurrentCapGoals));
-			Score::AddPoints(Players[PlayerId], 5);	
-		}
-	}
-}
-Message::CleanBigMessages();
-foreach(Player in Players)
-{
-	declare MSG = "";
-	switch(Player.User.Language)
-	{
-		case "pl": MSG = TextLib::Compose(_("$<%1$> zhakowali punkt dostępu!"), Teams[G_AttackingClan-1].ColorizedName);
-		default: MSG = TextLib::Compose(_("$<%1$> hacked the access point!"), Teams[G_AttackingClan-1].ColorizedName);
-	} 
-	Message::SendBigMessage(Player, MSG, 3500, 0);
-}	
-foreach(Spectator in Spectators)
-{
-	declare MSG = "";
-	switch(Spectator.User.Language)
-	{
-		case "pl": MSG = TextLib::Compose(_("$<%1$> zhakowali punkt dostępu!"), Teams[G_AttackingClan-1].ColorizedName);
-		default: MSG = TextLib::Compose(_("$<%1$> hacked the access point!"), Teams[G_AttackingClan-1].ColorizedName);
-	} 
-	Message::SendBigMessage(Spectator, MSG, 4000, 0);
-}
-Mode::PlaySound(CUIConfig::EUISound::Capture, 0);
-RoundClanWinner = G_AttackingClan;
-MB_StopRound = True;
-***
+// Init Item
+ItemList_Begin();
+G_ObjectId[C_Object] = ItemList_Add("PickUpFF/Laser.Item.gbx");
+ItemList_End();
+***					
 
 ***StartMatch***
 ***
@@ -204,7 +145,7 @@ UIManager.UIAll.MarkersXML = "";
 UIManager.UIAll.ScreenIn3dHideVersus = False;
 UIManager.UIAll.ScreenIn3dHideScoreSummary = True;
 G_ClansMapPoints	= [1 => 0, 2 => 0];
-G_Capturable 		= 0;
+G_PlantedOn 		= 0;
 G_AttackingClan 	= 1;
 ClanMapWinner		= 0;
 // reset custom scores table data
@@ -228,8 +169,7 @@ foreach (Player in Players)
 	declare netwrite Net_Cash for UI = S_StartCash;
 	Net_Cash = S_StartCash;
 	declare netwrite Net_Bought for UI = [False, False, False, False, False, False, False, False, False, False, False];
-	Net_Bought = [False, False, False, False, False, False, False, False, False, False, False];
-	
+	Net_Bought = [False, False, False, False, False, False, False, False, False, False, False];	
 }	
 
 // Update the players clublinks
@@ -244,8 +184,8 @@ Clublink::Attach();
 Clublink::SetSponsorsDisplay(False);
 SC_UpdateHeader(G_ClansMapPoints[1], G_ClansMapPoints[2]);
 
-// Debug
-Users_SetNbFakeUsers(G_BlueBot, G_RedBot);
+// Add test bots
+Users_SetNbFakeUsers(S_BlueBot, S_RedBot);
 
 SM::UnspawnAllPlayers();
 SC_WaitForPlayers();
@@ -257,7 +197,6 @@ declare Integer RoundClanWinner;// Team, who win the round
 declare Integer TempGoalNb;		// To stop looping
 declare Integer BestRoundScore;	// The best RoundPoints score in round
 declare CSmPlayer MVP;			// The best player in round
-declare Integer Announce;		// Temp variable to prevent looping message
 ***
 
 ***StartRound***
@@ -265,19 +204,19 @@ declare Integer Announce;		// Temp variable to prevent looping message
 TempGoalNb 				= 0;
 RoundClanWinner 		= 0;
 BestRoundScore 			= 0;
-Announce				= 0;
 MVP 					= Null;
+G_PlayerWithBomb		= Null;
 G_LastProgressUpdate 	= 0;
 G_LastSettingsUpdate 	= 0;
 G_LastTempUpdate 		= 0;
-G_Capturable 			= MathLib::Rand(1, 3);
+G_PlantedOn 			= 0;
+G_GameState				= C_StateIdle;
 Mode::Synchro_DoBarrier();
 UIManager.UIAll.ScoreTableVisibility = CUIConfig::EVisibility::Normal;
 Victory::RoundBegin();
 Score::RoundBegin();
 UpdateFooter();
 InitGoals();
-UIManager.UIAll.MarkersXML = "";
 // If this is the first round on the map, launch players presentation and toss
 if (MB_SectionRoundNb == 1) 
 {
@@ -297,15 +236,14 @@ if(ServerShutdownRequested || MatchEndRequested) break;
 foreach (Player in AllPlayers) 
 {
 	declare UI <=> UIManager.GetUI(Player);
+	if(UI == Null) continue;
+	UI.MarkersXML = "";
 	declare SpawnTicket for Player = 0;
 	declare netwrite Net_IsDead for UI = 0;
 	if(SpawnTicket < 1) Net_IsDead = 1;
 	else Net_IsDead = 0;
 }
-Layers::Update("CapturableInfo", UpdateLayerCapturable(G_Capturable));
-Layers::Attach("CapturableInfo");
-SC_EnableBuyZone(G_BuyTime*1000, G_AttackingClan);
-Layers::Detach("CapturableInfo");
+SC_EnableBuyZone(S_BuyTime*1000, G_AttackingClan);
 
 // Init players and spawn ticket
 foreach (Player in AllPlayers) 
@@ -361,14 +299,18 @@ Clublink::SyncUpdate();
 CustomUI::Attach();
 UIManager.UIAll.UISequence = CUIConfig::EUISequence::Playing;
 Layers::Update("ProgressBar", UpdateLayerProgressBar());
+Layers::Update("BombTimer", UpdateLayerBomb());
 Layers::Attach("ProgressBar");
 Layers::Attach("Markers");
 Layers::Update("HUD", UpdateLayerHUD());
 Layers::Attach("HUD");
+Layers::Attach("BombTimer");
+Layers::Hide("BombTimer");
 UpdateMarker();
-//MB_Log("G_Capturable = "^G_Capturable);
+ObjectDestroyAll();
+SpawnBombItem();
 
-SC_SetRoundTimer(G_RoundTime);
+SC_SetRoundTimer(S_RoundTime);
 ***
 
 ***OnPlayerAdded***
@@ -408,38 +350,13 @@ Message::Loop();
 
 ***PlayLoop***
 ***
-declare PlayerCountA = [1 => 0, 2 => 0];
-declare PlayerCountB = [1 => 0, 2 => 0];
-declare PlayerCountC = [1 => 0, 2 => 0];
-
+declare IsStanding = [1 => False, 2 => False];
+//Layers::Update("BombTimer", UpdateLayerBomb());
 if(G_LastSettingsUpdate + 1500 < Now)
 {
 	G_LastSettingsUpdate = Now;
-
-	if(S_RoundTime < 20) G_RoundTime = 20;
-	else G_RoundTime = S_RoundTime;
-
-	if(S_PoleCaptureDuration < 1) G_PoleCaptureDuration = 1;
-	else G_PoleCaptureDuration = S_PoleCaptureDuration;
-
-	if(S_MapPointsLimit < 1)
-	{
-		G_MapPointsLimit = 1;
-		UpdateFooter();
-	}	
-	else
-	{
-		G_MapPointsLimit = S_MapPointsLimit;
-		UpdateFooter();
-	}
 	
-	if(S_BlueBot < 0) G_BlueBot = 0;
-	else G_BlueBot = S_BlueBot;
-
-	if(S_RedBot < 0) G_RedBot = 0;
-	else G_RedBot = S_RedBot;
-	
-	Users_SetNbFakeUsers(G_BlueBot, G_RedBot);
+	Users_SetNbFakeUsers(S_BlueBot, S_RedBot);
 	
 	if(PlayersNbTotal < 2) MB_StopRound = True;
 }
@@ -461,7 +378,6 @@ foreach (Player in Players) {
 		NewSpectator = True;
 	}
 }
-
 // Don't let players going spectate respawn afterward
 foreach (Spectator in Spectators) 
 {
@@ -494,8 +410,8 @@ if(RoundClanWinner == 0)
 					
 					switch(Player.User.Language)
 					{
-						case "pl": MSG2 = "$9d0Znajdź punkt podatny na atak i go zdobądź by wygrać rundę.";
-						default: MSG2 = "$9d0Locate vulnerable access point and do the overload to win the round.";	
+						case "pl": MSG2 = "$9d0Podłóż bombę i broń jej do momentu eksplozji";
+						default: MSG2 = "$9d0Plant the bomb on the bombsite and defend until explosion";	
 					} 
 					Message::SendStatusMessage(Player, MSG2, 7000, 0);
 				}	
@@ -509,8 +425,8 @@ if(RoundClanWinner == 0)
 					
 					switch(Player.User.Language)
 					{
-						case "pl": MSG2 = "$9d0Broń punktu podatnego na ataki do końca trwania rundy.";
-						default: MSG2 = "$9d0Protect vulnerable access point to end of the round.";	
+						case "pl": MSG2 = "$9d0Nie pozwól atakującym podłożyć bombę";
+						default: MSG2 = "$9d0Prevent attackers from bomb planting";	
 					} 
 					Message::SendStatusMessage(Player, MSG2, 7000, 0);
 				}	
@@ -526,8 +442,8 @@ if(RoundClanWinner == 0)
 					
 					switch(Player.User.Language)
 					{
-						case "pl": MSG2 = "$9d0Znajdź punkt podatny na atak i go zdobądź by wygrać rundę.";
-						default: MSG2 = "$9d0Locate vulnerable access point and do the overload to win the round.";	
+						case "pl": MSG2 = "$9d0Podłóż bombę i broń jej do momentu eksplozji";
+						default: MSG2 = "$9d0Plant the bomb on the bombsite and defend until explosion";	
 					} 
 					Message::SendStatusMessage(Player, MSG2, 7000, 0);
 				}	
@@ -539,8 +455,8 @@ if(RoundClanWinner == 0)
 					
 					switch(Player.User.Language)
 					{
-						case "pl": MSG2 = "$9d0Broń punktu podatnego na ataki do końca trwania rundy.";
-						default: MSG2 = "$9d0Protect vulnerable access point to end of the round.";	
+						case "pl": MSG2 = "$9d0Nie pozwól atakującym podłożyć bombę";
+						default: MSG2 = "$9d0Prevent attackers from bomb planting";	
 					} 
 					Message::SendStatusMessage(Player, MSG2, 7000, 0);
 				}	
@@ -551,119 +467,328 @@ if(RoundClanWinner == 0)
 }
 
 // Timer management
-if (G_RoundTime > 0) 
+if (S_RoundTime > 0) 
 {
-	// End of the round, attackers didn't capture checkpoint
 	if (Now == EndTime) 
 	{
 		SM::UnspawnAllPlayers();
-		Message::CleanBigMessages();
-		Message::SendBigMessage(TextLib::Compose(_("Time limit reached!")), 4000, 0);
-		Victory::SetRoundWinnerIfNoWinner(3-G_AttackingClan);
-		RoundClanWinner = 3-G_AttackingClan;
-		MB_StopRound = True;
+		// Attackers didn't plant the bomb
+		if(G_GameState == C_StateIdle)
+		{
+			Message::CleanBigMessages();
+			Message::SendBigMessage(TextLib::Compose(_("Time limit reached!")), 4000, 0);
+			Victory::SetRoundWinnerIfNoWinner(3-G_AttackingClan);
+			RoundClanWinner = 3-G_AttackingClan;
+			MB_StopRound = True;
+		}
+		// Attackers explode the bombsite 
+		else if(G_GameState == C_StatePlanted)
+		{
+			Message::CleanBigMessages();
+			Message::SendBigMessage(TextLib::Compose(_("Bomb explode!")), 4000, 0);
+			Victory::SetRoundWinnerIfNoWinner(G_AttackingClan);
+			RoundClanWinner = G_AttackingClan;
+			G_GameState = C_StateExploded;
+			MB_StopRound = True;
+		}	
 	}
 }
 
 // Poles management
 foreach (LandmarkGauge in MapLandmarks_Gauge) 
-{
+{	
 	if(LandmarkGauge.Sector != Null)
 	{
-		switch(LandmarkGauge.Tag)
+		if(G_GameState == C_StateIdle) // Attacker with bomb is standing on bombsite
 		{
-			case "Server A":
+			if (LandmarkGauge.Sector.PlayersIds.count > 0) 
 			{
-				if (LandmarkGauge.Sector.PlayersIds.count > 0 && G_Capturable == 1) 
+				foreach (PlayerId in LandmarkGauge.Sector.PlayersIds) 
 				{
-					foreach (PlayerId in LandmarkGauge.Sector.PlayersIds) 
+					declare Player <=> Players[PlayerId];
+					if(LandmarkGauge.Tag == "Bombsite A")
 					{
-						declare Player <=> Players[PlayerId];
-						PlayerCountA[Player.CurrentClan] += 1;
+						if(Player.CurrentClan == G_AttackingClan && Player == G_PlayerWithBomb && !IsStanding[1]) IsStanding[1] = True;
+					}
+					else if	(LandmarkGauge.Tag == "Bombsite B")
+					{
+						if(Player.CurrentClan == G_AttackingClan && Player == G_PlayerWithBomb && !IsStanding[2]) IsStanding[2] = True;
 					}
 				}
 			}
-			case "Server B":
+		}
+		else if(G_GameState == C_StatePlanted) // Bomb planted, defenders are trying to defuse	
+		{
+			if (LandmarkGauge.Sector.PlayersIds.count > 0) 
 			{
-				if (LandmarkGauge.Sector.PlayersIds.count > 0 && G_Capturable == 2) 
+				foreach (PlayerId in LandmarkGauge.Sector.PlayersIds) 
 				{
-					foreach (PlayerId in LandmarkGauge.Sector.PlayersIds) 
+					declare Player <=> Players[PlayerId];
+					if(LandmarkGauge.Tag == "Bombsite A")
 					{
-						declare Player <=> Players[PlayerId];
-						PlayerCountB[Player.CurrentClan] += 1;
+						if(Player.CurrentClan == 3-G_AttackingClan && !IsStanding[1]) IsStanding[1] = True;
+					}
+					else if	(LandmarkGauge.Tag == "Bombsite B")
+					{
+						if(Player.CurrentClan == 3-G_AttackingClan && !IsStanding[2]) IsStanding[2] = True;
 					}
 				}
 			}
-			case "Server C":
-			{
-				if (LandmarkGauge.Sector.PlayersIds.count > 0 && G_Capturable == 3) 
-				{
-					foreach (PlayerId in LandmarkGauge.Sector.PlayersIds) 
-					{
-						declare Player <=> Players[PlayerId];
-						PlayerCountC[Player.CurrentClan] += 1;
-					}
-				}
-			}
-		}						
-	}
+		}		
+	}					
 }
 
 foreach (LandmarkGauge in MapLandmarks_Gauge) 
 {
-	if(LandmarkGauge.Sector != Null)
+	if(LandmarkGauge.Sector != Null && G_GameState == C_StateIdle)
 	{
-		if(LandmarkGauge.Tag == "Server A" && G_Capturable == 1)
+		if(LandmarkGauge.Tag == "Bombsite A")
 		{
-			// Capturing
-			if (PlayerCountA[G_AttackingClan] > 0 && !LandmarkGauge.Gauge.Captured) LandmarkGauge.Gauge.Speed = 1;
-			else if(PlayerCountA[3-G_AttackingClan] > 0 && !LandmarkGauge.Gauge.Captured) LandmarkGauge.Gauge.Speed = 0;
+			// Planting
+			if (IsStanding[1]) LandmarkGauge.Gauge.Speed = 1;
 			else
 			{
 				LandmarkGauge.Gauge.ValueReal = 0.;
 				LandmarkGauge.Gauge.Speed = 0;
 			}	
-			// Captured
-			if (LandmarkGauge.Gauge.Value >= LandmarkGauge.Gauge.Max) 
+			// Planted
+			if (LandmarkGauge.Gauge.Value == LandmarkGauge.Gauge.Max) 
 			{
 				LandmarkGauge.Gauge.Captured = True;
-				---WhenCaptured---
+				LandmarkGauge.Gauge.Clan = G_AttackingClan;
+				G_PlantedOn = 1;
+				G_GameState = C_StatePlanted;
+				EndTime = Now+(S_BombCountdown*1000);
+				Layers::Show("BombTimer");
+				if(LandmarkGauge.Sector.PlayersIds.count > 0)
+				{
+					foreach (PlayerId in LandmarkGauge.Sector.PlayersIds) 
+					{
+						if (Players.existskey(PlayerId) && Players[PlayerId].Score != Null && Players[PlayerId] == G_PlayerWithBomb) 
+						{
+							declare CurrentCapGoals for Players[PlayerId].Score = 0;
+							CurrentCapGoals += 1;
+							declare UI <=> UIManager.GetUI(Players[PlayerId]);
+							if(UI != Null)
+							{
+								declare netwrite Net_Cash for UI = S_StartCash;
+								Net_Cash += C_CashForCapture;
+							}	
+							ST2::SetColValue("ST_Captured", Players[PlayerId].Score, "$1F1"^TextLib::ToText(CurrentCapGoals));
+							Score::AddPoints(Players[PlayerId], 3);	
+						}
+					}
+				}
+				Message::CleanBigMessages();
+				foreach(Player in Players)
+				{
+					declare MSG = "";
+					switch(Player.User.Language)
+					{
+						case "pl": MSG = "Bomba podłożona!";
+						default: MSG = "The bomb has been planted!";
+					} 
+					Message::SendBigMessage(Player, MSG, 4000, 0);
+				}	
+				foreach(Spectator in Spectators)
+				{
+					declare MSG = "";
+					switch(Spectator.User.Language)
+					{
+						case "pl": MSG = "Bomba podłożona!";
+						default: MSG = "The bomb has been planted!";
+					} 
+					Message::SendBigMessage(Spectator, MSG, 5000, 0);
+				}
+				Mode::PlaySound(CUIConfig::EUISound::Capture, 0);
 			}
 		}
-		if(LandmarkGauge.Tag == "Server B" && G_Capturable == 2)
+		if(LandmarkGauge.Tag == "Bombsite B")
 		{
-			// Capturing
-			if (PlayerCountB[G_AttackingClan] > 0 && !LandmarkGauge.Gauge.Captured) LandmarkGauge.Gauge.Speed = 1;
-			else if(PlayerCountB[3-G_AttackingClan] > 0 && !LandmarkGauge.Gauge.Captured) LandmarkGauge.Gauge.Speed = 0;
+			// Planting
+			if (IsStanding[2]) LandmarkGauge.Gauge.Speed = 1;
 			else
 			{
 				LandmarkGauge.Gauge.ValueReal = 0.;
 				LandmarkGauge.Gauge.Speed = 0;
-			}
-			// Captured
-			if (LandmarkGauge.Gauge.Value >= LandmarkGauge.Gauge.Max) 
+			}	
+			// Planted
+			if (LandmarkGauge.Gauge.Value == LandmarkGauge.Gauge.Max) 
 			{
 				LandmarkGauge.Gauge.Captured = True;
-				---WhenCaptured---
+				LandmarkGauge.Gauge.Clan = G_AttackingClan;
+				G_PlantedOn = 2;
+				G_GameState = C_StatePlanted;
+				EndTime = Now+(S_BombCountdown*1000);
+				Layers::Show("BombTimer");
+				if(LandmarkGauge.Sector.PlayersIds.count > 0)
+				{
+					foreach (PlayerId in LandmarkGauge.Sector.PlayersIds) 
+					{
+						if (Players.existskey(PlayerId) && Players[PlayerId].Score != Null && Players[PlayerId] == G_PlayerWithBomb) 
+						{
+							declare CurrentCapGoals for Players[PlayerId].Score = 0;
+							CurrentCapGoals += 1;
+							declare UI <=> UIManager.GetUI(Players[PlayerId]);
+							if(UI != Null)
+							{
+								declare netwrite Net_Cash for UI = S_StartCash;
+								Net_Cash += C_CashForCapture;
+							}	
+							ST2::SetColValue("ST_Captured", Players[PlayerId].Score, "$1F1"^TextLib::ToText(CurrentCapGoals));
+							Score::AddPoints(Players[PlayerId], 3);	
+						}
+					}
+				}
+				Message::CleanBigMessages();
+				foreach(Player in Players)
+				{
+					declare MSG = "";
+					switch(Player.User.Language)
+					{
+						case "pl": MSG = "Bomba podłożona!";
+						default: MSG = "The bomb has been planted!";
+					} 
+					Message::SendBigMessage(Player, MSG, 4000, 0);
+				}	
+				foreach(Spectator in Spectators)
+				{
+					declare MSG = "";
+					switch(Spectator.User.Language)
+					{
+						case "pl": MSG = "Bomba podłożona!";
+						default: MSG = "The bomb has been planted!";
+					} 
+					Message::SendBigMessage(Spectator, MSG, 5000, 0);
+				}
+				Mode::PlaySound(CUIConfig::EUISound::Capture, 0);
 			}
 		}
-		if(LandmarkGauge.Tag == "Server C" && G_Capturable == 3)
+	}
+	else if(LandmarkGauge.Sector != Null && G_GameState == C_StatePlanted)
+	{
+		if(LandmarkGauge.Tag == "Bombsite A" && G_PlantedOn == 1)
 		{
-			// Capturing
-			if (PlayerCountC[G_AttackingClan] > 0 && !LandmarkGauge.Gauge.Captured) LandmarkGauge.Gauge.Speed = 1;
-			else if(PlayerCountC[3-G_AttackingClan] > 0 && !LandmarkGauge.Gauge.Captured) LandmarkGauge.Gauge.Speed = 0;
+			// Defusing
+			if (IsStanding[1]) LandmarkGauge.Gauge.Speed = -1;
 			else
 			{
-				LandmarkGauge.Gauge.ValueReal = 0.;
+				LandmarkGauge.Gauge.ValueReal = 1.;
 				LandmarkGauge.Gauge.Speed = 0;
-			}
-			// Captured
-			if (LandmarkGauge.Gauge.Value >= LandmarkGauge.Gauge.Max) 
+			}	
+			// Defused
+			if (LandmarkGauge.Gauge.Value == 0) 
 			{
-				LandmarkGauge.Gauge.Captured = True;
-				---WhenCaptured---
+				LandmarkGauge.Gauge.Captured = False;
+				G_GameState = C_StateDefused;
+				EndTime = -1;
+				Layers::Hide("BombTimer");
+				if(LandmarkGauge.Sector.PlayersIds.count > 0)
+				{
+					foreach (PlayerId in LandmarkGauge.Sector.PlayersIds) 
+					{
+						if (Players.existskey(PlayerId) && Players[PlayerId].Score != Null && Players[PlayerId].CurrentClan == 3-G_AttackingClan) 
+						{
+							declare CurrentCapGoals for Players[PlayerId].Score = 0;
+							CurrentCapGoals += 1;
+							declare UI <=> UIManager.GetUI(Players[PlayerId]);
+							if(UI != Null)
+							{
+								declare netwrite Net_Cash for UI = S_StartCash;
+								Net_Cash += C_CashForCapture;
+							}	
+							ST2::SetColValue("ST_Captured", Players[PlayerId].Score, "$1F1"^TextLib::ToText(CurrentCapGoals));
+							Score::AddPoints(Players[PlayerId], 3);	
+						}
+					}
+				}
+				Message::CleanBigMessages();
+				foreach(Player in Players)
+				{
+					declare MSG = "";
+					switch(Player.User.Language)
+					{
+						case "pl": MSG = "Bomba rozbrojona!";
+						default: MSG = "The bomb has been defused!";
+					} 
+					Message::SendBigMessage(Player, MSG, 4000, 0);
+				}	
+				foreach(Spectator in Spectators)
+				{
+					declare MSG = "";
+					switch(Spectator.User.Language)
+					{
+						case "pl": MSG = "Bomba rozbrojona!";
+						default: MSG = "The bomb has been defused!";
+					} 
+					Message::SendBigMessage(Spectator, MSG, 5000, 0);
+				}
+				Mode::PlaySound(CUIConfig::EUISound::Capture, 0);
+				RoundClanWinner = 3-G_AttackingClan;
+				MB_StopRound = True;
 			}
-		}	
+		}
+		else if(LandmarkGauge.Tag == "Bombsite B" && G_PlantedOn == 2)
+		{
+			// Defusing
+			if (IsStanding[2] && LandmarkGauge.Gauge.ValueReal > 0.) LandmarkGauge.Gauge.Speed = -1;
+			else
+			{
+				LandmarkGauge.Gauge.ValueReal = 1.;
+				LandmarkGauge.Gauge.Speed = 0;
+			}	
+			// Defused
+			if (LandmarkGauge.Gauge.Value == 0) 
+			{
+				LandmarkGauge.Gauge.Captured = False;
+				G_GameState = C_StateDefused;
+				EndTime = -1;
+				Layers::Hide("BombTimer");
+				if(LandmarkGauge.Sector.PlayersIds.count > 0)
+				{
+					foreach (PlayerId in LandmarkGauge.Sector.PlayersIds) 
+					{
+						if (Players.existskey(PlayerId) && Players[PlayerId].Score != Null && Players[PlayerId].CurrentClan == 3-G_AttackingClan) 
+						{
+							declare CurrentCapGoals for Players[PlayerId].Score = 0;
+							CurrentCapGoals += 1;
+							declare UI <=> UIManager.GetUI(Players[PlayerId]);
+							if(UI != Null)
+							{
+								declare netwrite Net_Cash for UI = S_StartCash;
+								Net_Cash += C_CashForCapture;
+							}	
+							ST2::SetColValue("ST_Captured", Players[PlayerId].Score, "$1F1"^TextLib::ToText(CurrentCapGoals));
+							Score::AddPoints(Players[PlayerId], 3);	
+						}
+					}
+				}
+				Message::CleanBigMessages();
+				foreach(Player in Players)
+				{
+					declare MSG = "";
+					switch(Player.User.Language)
+					{
+						case "pl": MSG = "Bomba rozbrojona!";
+						default: MSG = "The bomb has been defused!";
+					} 
+					Message::SendBigMessage(Player, MSG, 4000, 0);
+				}	
+				foreach(Spectator in Spectators)
+				{
+					declare MSG = "";
+					switch(Spectator.User.Language)
+					{
+						case "pl": MSG = "Bomba rozbrojona!";
+						default: MSG = "The bomb has been defused!";
+					} 
+					Message::SendBigMessage(Spectator, MSG, 5000, 0);
+				}
+				Mode::PlaySound(CUIConfig::EUISound::Capture, 0);
+				RoundClanWinner = 3-G_AttackingClan;
+				MB_StopRound = True;
+			}
+		}
 	}
 }
 
@@ -671,6 +796,8 @@ if(G_LastProgressUpdate + 1000 < Now)
 {
 	G_LastProgressUpdate = Now;
 	Layers::Update("HUD", UpdateLayerHUD());
+	MB_Log("G_PlayerWithBomb = "^G_PlayerWithBomb);
+	MB_Log("G_PlantedOn = "^G_PlantedOn);
 
 	G_PlayersAlive = [1 => 0, 2 => 0];
 	
@@ -678,21 +805,22 @@ if(G_LastProgressUpdate + 1000 < Now)
 	{
 		if(Player.Armor > 0 && Player.CurrentClan > 0) G_PlayersAlive[Player.CurrentClan] += 1;
 	}	
-	if(G_PlayersAlive[G_AttackingClan] <= 0)
+	if(G_PlayersAlive[G_AttackingClan] <= 0 && G_GameState != C_StatePlanted)
 	{
 		Victory::SetRoundWinnerIfNoWinner(3-G_AttackingClan);
 		RoundClanWinner = 3-G_AttackingClan;
 		MB_StopRound = True;
 		SC_AnnounceEliminationMessage(G_AttackingClan-1, 0);
 	}
-	else if(G_PlayersAlive[3-G_AttackingClan] <= 0 && Announce < 1)
+	else if(G_PlayersAlive[3-G_AttackingClan] <= 0)
 	{
-		Announce += 1;
-		Message::SendBigMessage(TextLib::Compose(_("All defenders eliminated, capture the goal!")), 10000, 0, CUIConfig::EUISound::PhaseChange, 0);
+		Victory::SetRoundWinnerIfNoWinner(G_AttackingClan);
+		RoundClanWinner = G_AttackingClan;
+		MB_StopRound = True;
+		SC_AnnounceEliminationMessage(3-G_AttackingClan-1, 0);
 	}
 }
 
-// Events
 foreach (Event in PendingEvents) 
 {
 	switch(Event.Type)
@@ -712,19 +840,39 @@ foreach (Event in PendingEvents)
 		{
 			---OnNearMiss---
 		}
-		case CSmModeEvent::EType::OnActionEvent:
+		// When player touches object
+		case CSmModeEvent::EType::OnPlayerTouchesObject:
 		{
-			if (Event.Player == Null) Discard(Event);
-			else 
+			if(Event.Player == Null || Event.Player.SpawnStatus != CSmPlayer::ESpawnStatus::Spawned) Discard(Event);
+			else if(Event.Player.CurrentClan == G_AttackingClan) 
+			{
+				PickUpObject(Event.Player, Event.Object);
+				PassOn(Event);
+			}
+			else Discard(Event);
+		}
+		// Weapon switch via keyboard and add ability to drop the bomb
+		case CSmModeEvent::EType::OnActionEvent: 
+		{
+			if(Event.Player == Null) Discard(Event);
+
+			/*if(Event.ActionInput == CSmModeEvent::EActionInput::Consumable1 && Event.Player == G_PlayerWithBomb)
+			{
+				DropTheBomb(Event.Player);
+				PassOn(Event);
+			}
+			else
 			{
 				SC_SwitchWeapon(Event.Player, Event.ActionInput);
 				PassOn(Event);
-			}
+			}	*/	
+			SC_SwitchWeapon(Event.Player, Event.ActionInput);
+			PassOn(Event);
 		}
+		// Armor empty
 		case CSmModeEvent::EType::OnArmorEmpty:
 		{
 			if(Event.Victim == Null) Discard(Event);
-
 			if (Event.Victim.Armor > 100)
 			{
 				declare SpawnTicket for Event.Victim = 0;
@@ -739,8 +887,11 @@ foreach (Event in PendingEvents)
 				{
 					declare netwrite Net_Cash for SUI = S_StartCash;
 					Net_Cash += C_CashForKill;
-				}	
-				//Remove eq that player bought
+				}
+				// If victim had the bomb, make a drop
+				if(G_PlayerWithBomb == Event.Victim) DropTheBomb(Event.Victim);
+		
+				// Remove eq that player bought
 				ActionBind(Event.Victim, CSmMode::EActionSlot::Slot_A, CSmMode::EActionInput::None);
 				SetPlayerAmmoMax(Event.Victim, CSmMode::EWeapon::Laser, 0);
 				SetPlayerAmmoMax(Event.Victim, CSmMode::EWeapon::Nucleus, 0);
@@ -763,29 +914,33 @@ foreach (Event in PendingEvents)
 						Net_PrimaryWeapons[Event.Victim.Login] = 0;
 					}
 				}
-			
+		
 				if (G_PlayersAlive[Event.Victim.CurrentClan] > 1) 
 				{
 					declare PLeft = G_PlayersAlive[Event.Victim.CurrentClan]-1;
 					if (PLeft <= 3) SC_AnnounceEliminationMessage(Event.Victim.CurrentClan-1, PLeft);
 				}
-			}	
+			}		
 			XmlRpc::OnArmorEmpty(Event);
 			PassOn(Event);
 		}
+		// Damage
 		case CSmModeEvent::EType::OnHit:
 		{
-			if(Event.Victim == Null || Event.Shooter == Null) Discard(Event);
-
-			// Discard friendly fire
+			if(Event.Shooter == Null || Event.Victim == Null) Discard(Event);
+			// Discard friendly fire(In future, there will be ff option)
 			if (Event.Shooter != Null && Event.Shooter.CurrentClan == Event.Victim.CurrentClan) Discard(Event);
 			else 
 			{
 				if(Event.WeaponNum == GetWeaponNum(CSmMode::EWeapon::Laser))
 				{
-					// Get distance
-					declare Distance = MathLib::Distance(Event.Shooter.Position, Event.Victim.Position);
-					SC_AnnounceHitDistance(Distance, Event.Shooter);
+					declare UI <=> UIManager.GetUI(Event.Shooter);
+					if(UI != Null)
+					{
+						// Get distance
+						declare Distance = MathLib::Distance(Event.Shooter.Position, Event.Victim.Position);
+						SC_AnnounceHitDistance(Distance, Event.Shooter);
+					}
 				}		
 				if (Event.Shooter != Event.Victim)
 				{
@@ -808,6 +963,7 @@ foreach (Event in PendingEvents)
 				PassOn(Event);
 			}
 		}
+		// Action Maker Events
 		case CSmModeEvent::EType::OnActionCustomEvent:
 		{
 			if(Event.Shooter == Null || Event.Victim == Null) Discard(Event);
@@ -816,7 +972,8 @@ foreach (Event in PendingEvents)
 			else if(Event.Param1 == "damage" && Event.Victim != Null && Event.Shooter != Null && Event.Victim != Event.Shooter) 
 			{
 				declare Damage = TextLib::ToInteger(Event.Param2[0]);
-           		declare Points = Damage / 100;
+      		 	declare Points = Damage / 100;
+      		 	// Shotgun fix (+0 when hit)
 				if(Damage < 100)
 				{
 					Points = 1;
@@ -826,27 +983,31 @@ foreach (Event in PendingEvents)
 				if (UI != Null) 
 				{
 					declare netwrite Net_Cash for UI = S_StartCash;
-            		Net_Cash += C_CashForHit;
+        		   	Net_Cash += C_CashForHit;
 					---HeadshotFunctions---
 					---ActionMakerAnnounceHeadshot---
 				}
-           	 	RemovePlayerArmor(Event.Victim, Damage, Event.Shooter, Points);
-           	 	Score::AddPoints(Event.Shooter, Points);
-          		if(Event.Victim.Armor - Damage <= 0)
+      		  RemovePlayerArmor(Event.Victim, Damage, Event.Shooter, Points);
+      		  Score::AddPoints(Event.Shooter, Points);
+     		   if(Event.Victim.Armor - Damage <= 0)
 				{
 					declare SpawnTicket for Event.Victim = 0;
 					SpawnTicket = 0;
 				}	
-            	PassOn(Event);
-       		}  
+   		   		PassOn(Event);
+  		  }  
 		}
+		// Give Up
 		case CSmModeEvent::EType::OnPlayerRequestRespawn:
 		{
 			if(Event.Player == Null) Discard(Event);
+
 			declare Message = "";
 			declare SpawnTicket for Event.Player = 0;
 			SpawnTicket = 0;
 
+			// If player had the bomb, make a drop
+			if(G_PlayerWithBomb == Event.Player) DropTheBomb(Event.Player);
 			//Remove eq that player bought
 			ActionBind(Event.Player, CSmMode::EActionSlot::Slot_A, CSmMode::EActionInput::None);
 			SetPlayerAmmoMax(Event.Player, CSmMode::EWeapon::Laser, 0);
@@ -874,21 +1035,21 @@ foreach (Event in PendingEvents)
 			{
 				declare PLeft = G_PlayersAlive[Event.Player.CurrentClan];
 				if(PLeft <= 3) SC_AnnounceEliminationMessage(Event.Player.CurrentClan-1, PLeft);
-	 		}
-
+			}
 			XmlRpc::OnPlayerRequestRespawn(Event);
 			PassOn(Event);
 		}
+		// Goal Captured
 		case CSmModeEvent::EType::OnCapture: Discard(Event);
 		default: PassOn(Event);
-	}
+	}	
 }
 ***
 
 ***EndRound***
 ***
 Layers::Detach("Markers");
-UIManager.UIAll.MarkersXML = "";
+Layers::Hide("BombTimer");
 // Search for MVP
 foreach(Player in Players)
 {
@@ -905,12 +1066,6 @@ if(MVP != Null && RoundClanWinner != 0)
 	ST2::SetColValue("ST_MVP", MVP.Score, "$fc0"^TextLib::ToText(CurrentMVP));
 }	
 MB_Sleep(1500);
-SM::UnspawnAllPlayers();
-MB_Sleep(1000);
-UIManager.UIAll.UISequence = CUIConfig::EUISequence::EndRound;
-UIManager.UIAll.MarkersXML = "";
-Victory::RoundEnd();
-EndTime = -1;
 //Give money for win/loss
 if(RoundClanWinner > 0)
 {
@@ -919,11 +1074,17 @@ if(RoundClanWinner > 0)
 	{
 		declare UI <=> UIManager.GetUI(Player);
 		if(UI == Null) continue;
+		UI.MarkersXML = "";	// Clear markers for player
 		declare netwrite Net_Cash for UI = S_StartCash;
 		if(Player.CurrentClan == RoundClanWinner) Net_Cash += C_CashForWin;
 		else if(Player.CurrentClan == 3-RoundClanWinner) Net_Cash += C_CashForLoss;
 	}
 }	
+SM::UnspawnAllPlayers();
+MB_Sleep(1000);
+UIManager.UIAll.UISequence = CUIConfig::EUISequence::EndRound;
+Victory::RoundEnd();
+EndTime = -1;
 Message::CleanAllMessages();
 Layers::Detach("HUD");
 if(MB_SectionRoundNb % 3 == 0) DisplayNotice();
@@ -932,12 +1093,12 @@ SC_AnnounceRoundWin(RoundClanWinner);
 UIManager.UIAll.ScoreTableVisibility = CUIConfig::EVisibility::ForcedVisible;
 MB_Sleep(4000);
 Score::RoundEnd();
-if(G_ClansMapPoints[1] >= G_MapPointsLimit)
+if(G_ClansMapPoints[1] >= S_MapPointsLimit)
 {
 	ClanMapWinner = 1;
 	MB_StopMap = True;
 }
-else if(G_ClansMapPoints[2] >= G_MapPointsLimit)
+else if(G_ClansMapPoints[2] >= S_MapPointsLimit)
 {
 	ClanMapWinner = 2;
 	MB_StopMap = True;
@@ -983,7 +1144,7 @@ foreach (Player in Players) {
 	if(Player.CurrentClan == ClanMapWinner && Player.Score != Null) {
 		declare LadderBonus for Player.Score = 0;
 		declare CurrentMVP for Player.Score = 0;
-		LadderBonus += CurrentMVP*6;
+		LadderBonus += CurrentMVP*5;
 	}
 	else if(Player.CurrentClan != ClanMapWinner && Player.Score != Null) {
 		declare LadderBonus for Player.Score = 0;
@@ -999,7 +1160,6 @@ Score::MatchEnd();
 foreach (Score in Scores) {
 	declare LadderBonus for Score = 0;
 	Score.Points -= LadderBonus;
-	//Score.RoundPoints = LadderBonus;
 }
 Victory::MatchEnd();
 Message::SendStatusMessage(TextLib::Compose(_("Map result: %1 %2 - %3 %4"),Teams[0].ColorizedName,TextLib::ToText(G_ClansMapPoints[1]),TextLib::ToText(G_ClansMapPoints[2]),Teams[1].ColorizedName), 6000, 0, CUIConfig::EUISound::EndRound, 0);
@@ -1017,6 +1177,7 @@ Message::CleanAllMessages();
 ***
 Layers::Destroy("ProgressBar");
 Layers::Destroy("RulesReminder");
+Layers::Destroy("BombTimer");
 Layers::Destroy("HUD");
 CustomUI::Unload();
 Layers::Destroy("Markers");
@@ -1031,25 +1192,17 @@ Void InitGoals()
 		{
 			switch(LandmarkGauge.Tag)
 			{
-				case "Server A":
+				case "Bombsite A":
 				{
-					LandmarkGauge.Gauge.Max		= G_PoleCaptureDuration * 1000;
+					LandmarkGauge.Gauge.Max		= S_PlantingTime * 1000;
 					LandmarkGauge.Gauge.Value	= 0;
 					LandmarkGauge.Gauge.Speed	= 0;
 					LandmarkGauge.Gauge.Clan 	= 0;
 					LandmarkGauge.Gauge.Captured= False;
 				}
-				case "Server B":
+				case "Bombsite B":
 				{
-					LandmarkGauge.Gauge.Max		= G_PoleCaptureDuration * 1000;
-					LandmarkGauge.Gauge.Value	= 0;
-					LandmarkGauge.Gauge.Speed	= 0;
-					LandmarkGauge.Gauge.Clan 	= 0;
-					LandmarkGauge.Gauge.Captured= False;
-				}
-				case "Server C":
-				{
-					LandmarkGauge.Gauge.Max		= G_PoleCaptureDuration * 1000;
+					LandmarkGauge.Gauge.Max		= S_PlantingTime * 1000;
 					LandmarkGauge.Gauge.Value	= 0;
 					LandmarkGauge.Gauge.Speed	= 0;
 					LandmarkGauge.Gauge.Clan 	= 0;
@@ -1105,13 +1258,76 @@ Void UpdateBasesColors() {
 	}
 }
 
+Void DropTheBomb(CSmPlayer _Player)
+{
+	if(_Player == Null) return;
+
+	foreach (Object in _Player.Objects)
+	{
+		if(Object == Null || Object.Id != G_ObjectId[C_Object]) continue;
+		if(Object.Status == CSmObject::EStatus::OnPlayer)
+		{
+			Object.SetPosition(_Player.Position);
+			G_PlayerWithBomb = Null;
+		}	
+	}	
+}
+
+Void SpawnBombItem() 
+{
+	foreach (MapLandmark in MapLandmarks_ObjectAnchor) 
+	{
+		declare ObjectAnchor <=> MapLandmark.ObjectAnchor;
+		if (ObjectAnchor == Null) continue;
+		
+		declare CSmObject Object;
+		Object = ObjectCreate(G_ObjectId[C_Object]);
+		if (Object != Null) 
+		{
+			//declare AnchorId for Object = NullId;
+			declare Tag for Object = MapLandmark.Tag;
+			//AnchorId = MapLandmark.Id;
+			Tag = MapLandmark.Tag;
+			Object.SetAnchor(ObjectAnchor);
+		}
+	}
+}
+
+Void PickUpObject(CSmPlayer _Player, CSmObject _Object) {
+	if (_Player == Null || _Object == Null || _Player.CurrentClan != G_AttackingClan) return;
+	
+	declare Tag for _Object = "";
+	/*declare AnchorId for _Object = NullId;
+	
+	if(_Object.Id != AnchorId) return;
+	
+	if (!MapLandmarks_ObjectAnchor.existskey(AnchorId)) return;
+	declare MapLandmark <=> MapLandmarks_ObjectAnchor[AnchorId];*/
+	 
+	G_PlayerWithBomb = _Player;
+	foreach(Player in Players)
+	{
+		declare UI <=> UIManager.GetUI(Player);
+		if(UI == Null || Player.CurrentClan != G_AttackingClan) continue;
+		UI.SendNotice(
+			TextLib::Compose(_("|Player picked up item|$<%1$> picked up %2"), _Player.Name, "Laser"), 
+			CUIConfig::ENoticeLevel::Default , Null, 
+			CUIConfig::EAvatarVariant::Happy, 
+			CUIConfig::EUISound::Silence, 0
+		);
+	}	
+	
+	_Object.SetPlayer(_Player);
+	ObjectDestroy(_Object);
+}
+
 Void DisplayNotice()
 {
 	foreach (Player in Players) 
 	{
 		declare UI <=> UIManager.GetUI(Player);
 		if (UI == Null) continue;
-		declare rand = MathLib::Rand(1,6);
+		declare rand = MathLib::Rand(1,5);
 		
 		declare Text[Integer] MSG;
 		declare Prefix = "$f90$s>>";
@@ -1119,48 +1335,43 @@ Void DisplayNotice()
 		{
 			case "pl":
 			{
-				MSG[1] = "Śledź maniaflash $h[maniaflash?overload]overload$h by uzyskać informacje o aktualizacjach";
+				MSG[1] = "Śledź maniaflash $h[maniaflash?snd]snd$h by uzyskać informacje o aktualizacjach";
 				MSG[2] = "Tryb został stworzony przez ToRRent'a";
 				MSG[3] = "Wciśnij F8 by zmodyfikować interfejs";
 				MSG[4] = "Drużyny co rundę zmieniają się rolami, jedni atakują, drudzy bronią.";
 				MSG[5] = "Jeżeli masz sugestie co do rozwoju trybu, napisz $l[http://forum.maniaplanet.com/viewtopic.php?f=10&t=28177&start=0]tutaj$l";
-				MSG[6] = "Tylko obrońcy więdzą, który punkt jest podatny na atak.";
 			}
 			case "fr": 
 			{
-				MSG[1] = "Abonne-toi au Maniaflash $h[maniaflash?overload]overload$h pour avoir les informations concernant les mises-à-jour et les rendez-vous";
+				MSG[1] = "Abonne-toi au Maniaflash $h[maniaflash?snd]snd$h pour avoir les informations concernant les mises-à-jour et les rendez-vous";
 				MSG[2] = "Mode de jeu créé par ToRRent";
 				MSG[3] = "Appuie sur F8 pour personnaliser l'interface";
 				MSG[4] = "Teams are switching roles every round, One is attacking, another defending";
 				MSG[5] = "Pour toute suggestion concernant le mode de jeu, merci d'aller $l[http://forum.maniaplanet.com/viewtopic.php?f=10&t=28177&start=0]ici$l";
-				MSG[6] = "Only defenders know, which access point is vulnerable.";
 			}
 			case "it": 
 			{
-				MSG[1] = "Segui maniaflash $h[maniaflash?overload]overload$h per ot tenere le informazioni sul tema di aggiornamenti e riunioni";
+				MSG[1] = "Segui maniaflash $h[maniaflash?snd]snd$h per ot tenere le informazioni sul tema di aggiornamenti e riunioni";
 				MSG[2] = "Il modo è stato creato grazie a ToRRent'a";
 				MSG[3] = "Digiti F8 per modificare l’interfaccia";
 				MSG[4] = "Teams are switching roles every round, One is attacking, another defending";
 				MSG[5] = "Se hai suggestioni rispetti allo sviluppo del modo, scrivi $l[http://forum.maniaplanet.com/viewtopic.php?f=10&t=28177&start=0]qui$l";
-				MSG[6] = "Only defenders know, which access point is vulnerable.";
 			}
 			case "de": 
 			{
-				MSG[1] = "Abonniere den ManiaFlash $h[maniaflash?overload]overload$h um Informationen über Aktualisierungen und Treffen zu erhalten";
+				MSG[1] = "Abonniere den ManiaFlash $h[maniaflash?snd]snd$h um Informationen über Aktualisierungen und Treffen zu erhalten";
 				MSG[2] = "Spielmodus erstellt durch ToRRent";
 				MSG[3] = "Drücke F8 um die Oberfläche anzupassen";
 				MSG[4] = "Teams are switching roles every round, One is attacking, another defending";
 				MSG[5] = "Verbesserungsvorschläge bitte $l[http://forum.maniaplanet.com/viewtopic.php?f=10&t=28177&start=0]hier$l";
-				MSG[6] = "Only defenders know, which access point is vulnerable.";
 			}
 			default:
 			{
-				MSG[1] = "Follow maniaflash $h[maniaflash?overload]overload$h to get informations about updates and meetings";
+				MSG[1] = "Follow maniaflash $h[maniaflash?snd]snd$h to get informations about updates and meetings";
 				MSG[2] = "Game mode was created by ToRRent";
 				MSG[3] = "Press F8 to customize interface";
 				MSG[4] = "Teams are switching roles every round, One is attacking, another defending";
 				MSG[5] = "If you have suggestion about gamemode, go $l[http://forum.maniaplanet.com/viewtopic.php?f=10&t=28177&start=0]here$l";
-				MSG[6] = "Only defenders know, which access point is vulnerable.";
 			}
 		}
 
@@ -1171,7 +1382,6 @@ Void DisplayNotice()
 			case 3: UI.SendChat(Prefix^MSG[3]);
 			case 4: UI.SendChat(Prefix^MSG[4]);
 			case 5: UI.SendChat(Prefix^MSG[5]);
-			case 6: UI.SendChat(Prefix^MSG[6]);
 		}
 	}	
 }
@@ -1179,13 +1389,14 @@ Void DisplayNotice()
 Text UpdateLayerHUD()
 {
 	return """
-<manialink version="1" name="Overload:Player HUD">
+<manialink version="1" name="SND:Player HUD">
 <frame hidden="1" id="Frame_Overlay">
 	<label posn="-65 -70 1" text="1: -" textsize="1" halign="left" id="Label_Primary"/>
 	<label posn="-65 -74 1" text="2: -" textsize="1" halign="left" id="Label_Secondary"/>
 	<label posn="52 -70 1" text="0" textsize="4" halign="right" style="TextRaceChrono" id="Label_Cash"/>
 	<label posn="58 -70 1" text="$9f0$$" textsize="4" halign="right"/>
 	<label posn="0 -62 1" text="Function" style="TextTitle3" textsize="3" halign="center" id="Label_Role"/>
+	<label posn="0 -56 1" text="Press 3 to drop the bomb" style="TextTitle3" hidden="1" textsize="3" halign="center" id="Label_Bomb"/>
 </frame>
 <script><!--	
 main()
@@ -1195,6 +1406,7 @@ main()
 	declare Label_Secondary <=> (Page.GetFirstChild("Label_Secondary") as CMlLabel);
 	declare Label_Cash <=> (Page.GetFirstChild("Label_Cash") as CMlLabel);
 	declare Label_Role <=> (Page.GetFirstChild("Label_Role") as CMlLabel);
+	declare Label_Bomb <=> (Page.GetFirstChild("Label_Bomb") as CMlLabel);
 	while(True)
 	{
 		yield;
@@ -1206,6 +1418,9 @@ main()
 			Label_Cash.Value = Net_Cash^"";
 			if(InputPlayer.CurrentClan == {{{G_AttackingClan}}}) Label_Role.SetText(_("|Imperative|Attack"));
 			else Label_Role.SetText(_("|Imperative|Defend")); 
+
+			/*if(InputPlayer == Null) Label_Bomb.Show();
+			else Label_Bomb.Hide();*/
 
 			declare netread Integer[Text] Net_PrimaryWeapons for UI;
 			if(Net_PrimaryWeapons.existskey(InputPlayer.Login))
@@ -1245,92 +1460,48 @@ main()
 Void UpdateMarker()
 {
 	UIManager.UIAll.MarkersXML = "";
-	foreach(Player in Players)
+	declare Manialink = "";
+	foreach (Goal in MapLandmarks_Gauge) 
 	{
-		declare UI <=> UIManager.GetUI(Player);
-		if (UI == Null) continue;
-		declare PlayerManialink for Player = "";
-		PlayerManialink = "";
-
-		foreach (Goal in MapLandmarks_Gauge) 
+		declare PosX = Goal.Position.X;
+		declare PosY = Goal.Position.Y + 0.7;
+		declare PosZ = Goal.Position.Z;
+		if (Goal.Tag == "Bombsite A") 
 		{
-			declare PosX = Goal.Position.X;
-			declare PosY = Goal.Position.Y + 0.3;
-			declare PosZ = Goal.Position.Z;
-			if (Goal.Tag == "Server A") 
-			{
-				if(Player.CurrentClan == G_AttackingClan) PlayerManialink ^= """<marker label="$oA" pos="{{{PosX}}} {{{PosY}}} {{{PosZ}}}" hudvisibility="Always" />""";
-				else if(G_Capturable == 1) PlayerManialink ^= """<marker label="$oA $z- $f30Vulnerable" pos="{{{PosX}}} {{{PosY}}} {{{PosZ}}}" hudvisibility="Always" />""";
-				else PlayerManialink ^= """<marker label="$oA $z- $9f0Safe" pos="{{{PosX}}} {{{PosY}}} {{{PosZ}}}" hudvisibility="Always" />""";
-			} 
-			else if (Goal.Tag == "Server B") 
-			{
-				if(Player.CurrentClan == G_AttackingClan) PlayerManialink ^= """<marker label="$oB" pos="{{{PosX}}} {{{PosY}}} {{{PosZ}}}" hudvisibility="Always" />""";
-				else if(G_Capturable == 2) PlayerManialink ^= """<marker label="$oB $z- $f30Vulnerable" pos="{{{PosX}}} {{{PosY}}} {{{PosZ}}}" hudvisibility="Always" />""";
-				else PlayerManialink ^= """<marker label="$oB $z- $9f0Safe" pos="{{{PosX}}} {{{PosY}}} {{{PosZ}}}" hudvisibility="Always" />""";
-			}
-			else if (Goal.Tag == "Server C") 
-			{
-				if(Player.CurrentClan == G_AttackingClan) PlayerManialink ^= """<marker label="$oC" pos="{{{PosX}}} {{{PosY}}} {{{PosZ}}}" hudvisibility="Always" />""";
-				else if(G_Capturable == 3) PlayerManialink ^= """<marker label="$oC $z- $f30Vulnerable" pos="{{{PosX}}} {{{PosY}}} {{{PosZ}}}" hudvisibility="Always" />""";
-				else PlayerManialink ^= """<marker label="$oC $z- $9f0Safe" pos="{{{PosX}}} {{{PosY}}} {{{PosZ}}}" hudvisibility="Always" />""";
-			}
+			Manialink ^= """<marker label="$oA" pos="{{{PosX}}} {{{PosY}}} {{{PosZ}}}" hudvisibility="Always" />""";
+		} 
+		else if (Goal.Tag == "Bombsite B") 
+		{
+			Manialink ^= """<marker label="$oB" pos="{{{PosX}}} {{{PosY}}} {{{PosZ}}}" hudvisibility="Always" />""";
 		}
-
-		UI.MarkersXML = PlayerManialink;
 	}
-	foreach(Spectator in Spectators)
+	if(G_PlayerWithBomb != Null)
 	{
-		declare UI <=> UIManager.GetUI(Spectator);
-		if (UI == Null) continue;
-		declare PlayerManialink for Spectator = "";
-		PlayerManialink = "";
-
-		foreach (Goal in MapLandmarks_Gauge) 
-		{
-			declare PosX = Goal.Position.X;
-			declare PosY = Goal.Position.Y + 0.3;
-			declare PosZ = Goal.Position.Z;
-			if (Goal.Tag == "Server A") 
-			{
-				if(G_Capturable == 1) PlayerManialink ^= """<marker label="$oA $z- $f30Vulnerable" pos="{{{PosX}}} {{{PosY}}} {{{PosZ}}}" hudvisibility="Always" />""";
-				else PlayerManialink ^= """<marker label="$oA $z- $9f0Safe" pos="{{{PosX}}} {{{PosY}}} {{{PosZ}}}" hudvisibility="Always" />""";
-			} 
-			else if (Goal.Tag == "Server B") 
-			{
-				if(G_Capturable == 2) PlayerManialink ^= """<marker label="$oB $z- $f30Vulnerable" pos="{{{PosX}}} {{{PosY}}} {{{PosZ}}}" hudvisibility="Always" />""";
-				else PlayerManialink ^= """<marker label="$oB $z- $9f0Safe" pos="{{{PosX}}} {{{PosY}}} {{{PosZ}}}" hudvisibility="Always" />""";
-			}
-			else if (Goal.Tag == "Server C") 
-			{
-				if(G_Capturable == 3) PlayerManialink ^= """<marker label="$oC $z- $f30Vulnerable" pos="{{{PosX}}} {{{PosY}}} {{{PosZ}}}" hudvisibility="Always" />""";
-				else PlayerManialink ^= """<marker label="$oC $z- $9f0Safe" pos="{{{PosX}}} {{{PosY}}} {{{PosZ}}}" hudvisibility="Always" />""";
-			}
-		}
-
-		UI.MarkersXML = PlayerManialink;
+		Manialink ^= """<marker label="Laser" objectid="{{{G_ObjectId[C_Object]}}}" hudvisibility="Always" />""";
 	}
+	
+	UIManager.UIAll.MarkersXML = Manialink;
 }
 
 Text UpdateLayerRulesReminder() {
 	declare Text HighlightColor		= "f90";
 	
-	declare Text TitleText 			= TextLib::Compose(_("Welcome to %1!"), "Overload");
+	declare Text TitleText 			= TextLib::Compose(_("Welcome to %1!"), "Search And Destroy");
 	
 	return """
-<manialink version="1" name="Overload:Rules Reminder">
+<manialink version="1" name="SND:Rules Reminder">	
 <dico>
    <language id="en">
-    	<rule1>- Map contain 3 access points, only one is vulnerable.</rule1>
-    	<rule2>$f70Attackers:$g Locate vulnerable point and capture to do overload.</rule2>
-    	<rule3>$f70Defenders:$g Protect vulnerable point to end of the round.</rule3>
-    	<rule4>- Before round, you can buy equipment in the shop.</rule4>
+    	<rule1>$f70Attackers$g: Plant the bomb on 1 bombsite and wait for explosion to win.</rule1>
+    	<rule2>$f70Defenders$g: Protect bombsites to end of the round or eliminate attackers to win.</rule2>
+    	<rule3>For actions like kills, headshots, wins etc. you are earning money.</rule3>
+    	<rule4>Before round, you can buy equipment in the shop.</rule4>
    </language>
    <language id="pl">
-    	<rule1>- Mapa zawiera 3 punkty dostępu, tylko jeden jest podatny na atak.(vulnerable)</rule1>
-    	<rule2>$f70Atakujący:$g Znajdź punkt podatny na atak i go zdobądź.</rule2>
-    	<rule3>$f70Obrońcy:$g Chroń podatny na ataki punkt do końca trwania rundy</rule3>
-    	<rule4>- Przed rozpoczęciem rundy, możesz kupić ekwipunek w sklepie</rule4>
+    	<rule1>$f70W ataku$g: Podłóż bombę w strefie i doprowadź do eksplozji by wygrać.</rule1>
+    	<rule2>$f70W obronie$g: Chroń stref do końca trwania rundy lub wyeliminuj atakujących by wygrać.</rule2>
+    	<rule3>Za akcje jak eliminacje, headshoty, zwycięstwa itp. zdobywasz pieniądze.</rule3>
+    	<rule4>Przed rundą możesz kupić ekwipunek.</rule4>
    </language>
 </dico>
 <frame id="RulesReminderMainFrame" hidden="true" posn="0 13 100" >
@@ -1377,43 +1548,19 @@ Text UpdateLayerProgressBar()
 {
 	declare Text ML = "";
 	ML = """
-<manialink version="1" name="Overload:Real-Time Progress Bar">
-<dico>
-   <language id="en">
-      <label0>Loading data...</label0>
-      <label1>Hacking...</label1>
-      <label2>Wrong point, check another one.</label2>
-      <label3>It's safe, protect vulnerable access point.</label3>
-	  <label4>Protect this access point.</label4>
-   </language>
-   <language id="pl">
-      <label0>Ładowanie...</label0>
-      <label1>Hakowanie...</label1>
-      <label2>Zły punkt, znajdź podatny na atak.</label2>
-      <label3>Ten punkt jest bezpieczny, chroń punkt podatny na ataki.</label3>
-	  <label4>Broń tego punktu przed atakami.</label4>
-   </language>
-</dico>
-	<frame class="LibCustomUI_Module" id="Overload_GaugeCapture">
-		<frame posn="0 -46" id="Frame_Capture">
-			<quad posn="0 0 2" sizen="128 20" halign="center" valign="center" image="{{{C_ImgModeDir}}}/Structure.dds" />
-			<label posn="0 -2.5 3" halign="center" textsize="3" textemboss="1" textprefix="$bbb" textid="label0" id="Label_Goal" style="TextButtonBig"/>
-			<label posn="0 13 3" halign="center" textsize="3" textemboss="1" style="TextCreditsTitle" textid="label1" hidden="1" textprefix="$o" id="Label_Info_1"/>
-			<label posn="0 13 3" halign="center" textsize="3" textemboss="1" style="TextCreditsTitle" textid="label2" hidden="1" textprefix="$o" id="Label_Info_2"/>
-			<label posn="0 13 3" halign="center" textsize="3" textemboss="1" style="TextCreditsTitle" textid="label3" hidden="1" textprefix="$o" id="Label_Info_3"/>
-			<label posn="0 13 3" halign="center" textsize="3" textemboss="1" style="TextCreditsTitle" textid="label4" hidden="1" textprefix="$o" id="Label_Info_4"/>
-			<gauge posn="0 8 2" sizen="124 10.4" halign="center" style="EnergyBar" drawbg="1" drawblockbg="1" id="Gauge_Capture" />
-		</frame>
-	</frame>	
+<manialink version="1" name="SND:Real-Time Progress Bar">
+<frame class="LibCustomUI_Module" id="SND_GaugeCapture">
+	<frame posn="0 -46" id="Frame_Capture">
+		<quad posn="0 0 2" sizen="128 20" halign="center" valign="center" image="{{{C_ImgModeDir}}}/Structure.dds" />
+		<label posn="0 -2.5 3" halign="center" textsize="3" textemboss="1" textprefix="$bbb" textid="label0" id="Label_Goal" style="TextButtonBig"/>
+		<gauge posn="0 8 2" sizen="124 10.4" halign="center" style="EnergyBar" drawbg="1" drawblockbg="1" id="Gauge_Capture" />
+	</frame>
+</frame>	
 <script><!--
 #Include "MathLib" as ML
 main() 
 {
 	declare Frame_Capture 	<=> (Page.GetFirstChild("Frame_Capture") 	as CMlFrame);
-	declare Label_Info_1	<=> (Page.GetFirstChild("Label_Info_1")		as CMlLabel);
-	declare Label_Info_2	<=> (Page.GetFirstChild("Label_Info_2")		as CMlLabel);
-	declare Label_Info_3	<=> (Page.GetFirstChild("Label_Info_3")		as CMlLabel);
-	declare Label_Info_4	<=> (Page.GetFirstChild("Label_Info_4")		as CMlLabel);
 	declare Label_Goal 		<=> (Page.GetFirstChild("Label_Goal") 		as CMlLabel);
 	declare Gauge_Capture 	<=> (Page.GetFirstChild("Gauge_Capture") 	as CMlGauge);
 	{{{CustomUI::InjectMLInit()}}}
@@ -1425,92 +1572,16 @@ main()
 		
 		{{{CustomUI::InjectMLLoop()}}}
 		
-		Label_Info_1.Hide();
-		Label_Info_2.Hide();
-		Label_Info_3.Hide();	
-		Label_Info_4.Hide();
+		declare CSmPlayer TargetPlayer;
+		if (GUIPlayer != Null) TargetPlayer <=> GUIPlayer;
+		else TargetPlayer <=> InputPlayer;
 		
-		if (InputPlayer.SpawnStatus == CSmPlayer::ESpawnStatus::Spawned && InputPlayer.CapturedLandmark != Null && InputPlayer.CapturedLandmark.Gauge != Null && (InputPlayer.CapturedLandmark.Tag == "Server A" || InputPlayer.CapturedLandmark.Tag == "Server B" || InputPlayer.CapturedLandmark.Tag == "Server C")) 
+		if (TargetPlayer.SpawnStatus == CSmPlayer::ESpawnStatus::Spawned && TargetPlayer.CapturedLandmark != Null && TargetPlayer.CapturedLandmark.Gauge != Null && (TargetPlayer.CapturedLandmark.Tag == "Bombsite A" || TargetPlayer.CapturedLandmark.Tag == "Bombsite B")) 
 		{
 			if (!Frame_Capture.Visible) Frame_Capture.Visible = True;
-			Gauge_Capture.Ratio = InputPlayer.CapturedLandmark.Gauge.ValueReal;
-			Gauge_Capture.Clan = InputPlayer.CurrentClan;
-			Label_Goal.Value = "$dda"^ML::FloorInteger(InputPlayer.CapturedLandmark.Gauge.ValueReal * 100.)^"%";
-			if(InputPlayer.CapturedLandmark.Gauge.Speed == 0)
-			{
-				if(InputPlayer.CurrentClan != {{{G_AttackingClan}}})
-				{
-					switch(InputPlayer.CapturedLandmark.Tag)
-					{
-						case "Server A":
-						{
-							if({{{G_Capturable}}} == 1)
-							{
-								Label_Info_1.Hide();
-								Label_Info_2.Hide();
-								Label_Info_3.Hide();		
-								Label_Info_4.Show();
-							}
-							else
-							{
-								Label_Info_1.Hide();
-								Label_Info_2.Hide();
-								Label_Info_3.Show();		
-								Label_Info_4.Hide();
-							}
-						}
-						case "Server B":
-						{
-							if({{{G_Capturable}}} == 2)
-							{
-								Label_Info_1.Hide();
-								Label_Info_2.Hide();
-								Label_Info_3.Hide();		
-								Label_Info_4.Show();
-							}
-							else
-							{
-								Label_Info_1.Hide();
-								Label_Info_2.Hide();
-								Label_Info_3.Show();		
-								Label_Info_4.Hide();
-							}
-						}
-						case "Server C":
-						{
-							if({{{G_Capturable}}} == 3)
-							{
-								Label_Info_1.Hide();
-								Label_Info_2.Hide();
-								Label_Info_3.Hide();		
-								Label_Info_4.Show();
-							}
-							else
-							{
-								Label_Info_1.Hide();
-								Label_Info_2.Hide();
-								Label_Info_3.Show();		
-								Label_Info_4.Hide();
-							}
-						}
-					}
-				}	
-				else
-				{
-					Label_Info_1.Hide();
-					Label_Info_2.Show();
-					Label_Info_3.Hide();		
-					Label_Info_4.Hide();
-				}
-			}
-			else if(InputPlayer.CapturedLandmark.Gauge.Speed > 1)
-			{
-				Label_Info_1.Show();
-				Label_Info_2.Hide();
-				Label_Info_3.Hide();		
-				Label_Info_4.Hide();
-			}
-
+			Gauge_Capture.Ratio = TargetPlayer.CapturedLandmark.Gauge.ValueReal;
+			Gauge_Capture.Clan = TargetPlayer.CurrentClan;
+			Label_Goal.Value = "$dda"^ML::FloorInteger(TargetPlayer.CapturedLandmark.Gauge.ValueReal * 100.)^"%";
 		} 
 		else if (Frame_Capture.Visible) 
 		{
@@ -1525,56 +1596,16 @@ main()
 	return ML;	
 }
 
-Text GetLetterFromNumber(Integer _Number)
-{
-	declare Result = "";
-	switch(_Number)
-	{
-		case 1: Result = "$fa0A";
-		case 2: Result = "$fa0B";
-		case 3: Result = "$fa0C";
-		default: Result = "";
-	}
-	return Result;
-}
-
-Text UpdateLayerCapturable(Integer _Capturable)
+Text UpdateLayerBomb()
 {
 	return """
-<manialink version="1" name="Overload:Capturable Info Panel">
-<dico>
-   <language id="en">
-    	<info>Access point vulnerable in this round</info>
-   </language>
-   <language id="pl">
-    	<info>Punkt podatny na ataki w tej rundzie</info>
-   </language>
-</dico>
-<frame posn="0 -75 0" id="Frame_Cap" hidden="1">
-	<label posn="0 2 0" sizen="75 5" halign="center" textid="info" textsize="4" />
-	<label posn="0 -5 0" halign="center" text="{{{GetLetterFromNumber(_Capturable)}}}" textsize="9" />
-</frame>
-<script><!--
-main()
-{
-	declare Frame_Cap <=> (Page.GetFirstChild("Frame_Cap") 	as CMlFrame);
-	while(True)
-	{
-		yield;
-		if (InputPlayer == Null) continue;
-		if (!PageIsVisible) continue;
-		
-		if(InputPlayer.CurrentClan == {{{G_AttackingClan}}}) Frame_Cap.Hide();
-		else Frame_Cap.Show();
-	}
-	
-}
---></script>
+<manialink version="1" name="SND:Bomb Text">
+<label posn="0 81.5 250" halign="center" sizen="16 16" text="$f50BOMB" scale="0.9" style="TextTitle3"/>
 </manialink>
-""";
+	""";
 }
 
 Void UpdateFooter()
 {
-	SC_UpdateSTFooter(G_MapPointsLimit, G_ClansMapPoints[1], G_ClansMapPoints[2], G_AttackingClan);
+	SC_UpdateSTFooter(S_MapPointsLimit, G_ClansMapPoints[1], G_ClansMapPoints[2], G_AttackingClan);
 }
