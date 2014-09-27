@@ -1,8 +1,8 @@
 // VANILLA MODE: Free for all where players are fighting to be the last man standing until spawn wave
 #Extends "Modes/ShootMania/ModeBase.Script.txt"
 
-#Const	CompatibleMapTypes	"CountdownArena"
-#Const	Version				"2014-09-21"
+#Const	CompatibleMapTypes	"CountdownArena,MeleeArena,RoyalArena"
+#Const	Version				"2014-09-27"
 #Const	ScriptName			"Countdown.Script.txt"
 
 #Include "MathLib" as MathLib
@@ -20,7 +20,7 @@
 #Setting S_CheckInc				5		as _("Time incrementation for next spawn wave")
 #Setting S_PointsToWin 			3 		as _("Number of rounds, player need to win a map")
 #Setting S_UseLevelProgression	True 	as _("Enable Evolution system")
-#Setting S_Bots 				4 		as _("Fill up server with bots")
+#Setting S_Bots 				5 		as _("Fill up server with bots")
 #Setting S_UseDynamicColors		True	as _("Change glow color when round is coming to the end?")
 #Setting S_MarkersWhen			2 		as _("How many players must be alive to show markers")
 					//     < 	20           >  +30  +40  +50  +60  +70  +85  +100 +115 +130 +145 +165  +185  +205  +225  +245   +270  +295  +320  +345  +370 +400  +430   +460  +490  +520  +560  +600  +640  +680  +720  +770  +820   +870    +920   +970  +1030  +1090  +1150 +1210  +1270   +1340   +1410  +1480 +1550  +1620
@@ -522,10 +522,9 @@ foreach(Event in PendingEvents)
 		}
 		case CSmModeEvent::EType::OnArmorEmpty:
 		{
-			if(Event.Victim == Null) Discard(Event);
+			if(Event.Victim == Null || Event.Shooter == Null) Discard(Event);
 
 			//Message::SendStatusMessage(TextLib::Compose(_("$<%1$> eliminated!"), Event.Victim.Name), 2500, 1, CUIConfig::EUISound::PlayerEliminated, 0);
-			
 			declare Kills for Event.Shooter.Score = 0;
 			Kills += 1;
 			declare WaveKills for Event.Shooter.Score = 0;
@@ -720,7 +719,8 @@ Void ManageBots()
 	{
 		Users_DestroyAllFakes();
 		Users_SetNbFakeUsers(0, 0);
-	}	
+	}
+	else Users_SetNbFakeUsers(S_Bots-PlayerCounter, 0);
 }
 
 // Manage adding and removing of bots
@@ -788,17 +788,38 @@ Void RespawnPlayers()
 		// Apply bot hehavior
 		if (Player.Driver != Null) 
 		{
-			Player.Driver.AggroRadius					= 110.;
+			/*Player.Driver.AggroRadius					= 110.;
 			Player.Driver.Agressivity					= 10.;
-			//Player.Driver.PathSpeedCoef 				= 4.;
+			Player.Driver.PathSpeedCoef 				= 4.;
 			Player.Driver.AttackFilter					= CSmPlayerDriver::ESmAttackFilter::AllOpposite;
 			Player.Driver.Behaviour						= CSmPlayerDriver::ESmDriverBehaviour::Patrol;
 			Player.Driver.Patrol_Mode 					= CSmPlayerDriver::ESmDriverPatrolMode::Loop;
 			Player.Driver.DisengageDistance				= 150.;
 			Player.Driver.ReactionTime					= 300;
+			Player.Driver.RocketAnticipation			= True;*/
+			
+			/*Player.Driver.AggroRadius					= 90.;
+			Player.Driver.Agressivity					= 10.;
+			Player.Driver.AttackFilter					= CSmPlayerDriver::ESmAttackFilter::AllOpposite;
+			Player.Driver.Behaviour						= CSmPlayerDriver::ESmDriverBehaviour::Saunter;
+			Player.Driver.DisengageDistance				= 100.;
+			Player.Driver.ReactionTime					= 100;
 			Player.Driver.RocketAnticipation			= True;
-			//Player.Driver.ShootPeriodMin				= 300;
-			//Player.Driver.ShootPeriodMax				= 1800;
+			Player.Driver.Saunter_BaseChillingTime		= 200;
+			Player.Driver.Saunter_ChillingTimeDelta		= 100;
+			Player.Driver.Saunter_Radius				= 130.;*/
+			
+			Player.Driver.AggroRadius 					= 100.;
+			Player.Driver.DisengageDistance 			= 230.;
+			Player.Driver.Accuracy 						= 1.;
+			Player.Driver.Agressivity 					= 100.;
+			Player.Driver.Fov 							= 100.;
+			Player.Driver.ShootPeriodMin 				= 70;
+			Player.Driver.ShootPeriodMax 				= 750;
+			Player.Driver.ReactionTime 					= 200;
+			Player.Driver.RocketAnticipation 			= True;
+			Player.Driver.Scripted_ForceAimInMoveDir 	= True;
+			Player.Driver.AttackFilter 					= CSmPlayerDriver::ESmAttackFilter::AllOpposite;
 		}
 		declare Removed = G_SpawnsList.remove(SpawnId);
 		declare SpawnArmor for Player = 300;
