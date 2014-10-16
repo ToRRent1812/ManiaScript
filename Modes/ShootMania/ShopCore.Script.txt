@@ -1,17 +1,24 @@
-#Extends "Modes/Shootmania/ModeBase.Script.txt"
+#Extends "Modes/Shootmania/ModeBase2.Script.txt"
 
+#Include "Libs/Vote.Script.txt" as VoteMap
+#Include "Libs/Rank.Script.txt" as Rank
 #Include "Libs/Nadeo/Sound.Script.txt" as Sound
 #Include "Libs/Nadeo/Message.Script.txt" as Message
 #Include "Libs/Nadeo/Layers2.Script.txt" as Layers
 #Include "Libs/Nadeo/Shootmania/Toss.Script.txt" as Toss
 
-#Setting S_BuyTime				20		as _("Time in seconds to buy before round")
-#Setting S_StartCash 			800 	as _("Starting money")
+#Setting S_MapPointsLimit		5		as _("Number of rounds to make half-time")
+#Setting S_FinalRoundExceptDraw	False	as _("Use additional round to determine map winner")
+#Setting S_BuyTime				18		as _("Time in seconds to buy before round")
+#Setting S_StartCash 			800 	as _("Starting money (max=16000)")
+#Setting S_MapVoteSystem 		True 	as _("Use map vote system at the end of the map")
+/*#Setting S_MinimumTierToPlay 	0 		as "<hidden>"
+#Setting S_MaximumTierToPlay 	19 		as "<hidden>"*/
 
 #Const C_ImgBaseDir				"file://Media/Manialinks/Shootmania/Common/"
 #Const C_ImgModeDir				"file://Media/Manialinks/Shootmania/Common/FireFight"
 
-#Const C_RocketsAmmo			3 // rockets
+#Const C_RocketsAmmo			4 // rockets
 
 // For easier shop management
 #Const C_BoughtMoreStamina		0
@@ -26,7 +33,7 @@
 #Const C_BoughtShield			9
 #Const C_BoughtJuggernautSuit	10
 								  //0,   1,   2,   3,    4,    5,    6,    7,    8,    9,   10
-#Const C_ShopPrices 			[0, 600, 800, 900, 1600, 2100, 1850, 4000, 4350, 2400, 850, 2500]
+#Const C_ShopPrices 			[0, 600, 800, 900, 1600, 2100, 1850, 4250, 4500, 2400, 1000, 2500]
 
 #Const C_BasicStamina		 	0.7
 #Const C_BasicSpeed 			0.9
@@ -35,8 +42,8 @@
 #Const C_CashForKill 			300
 #Const C_CashForHeadshotHit 	15
 #Const C_CashForCapture 		500
-#Const C_CashForWin 			1250
-#Const C_CashForLoss 			500
+#Const C_CashForWin 			1500
+#Const C_CashForLoss 			1000
 
 declare Integer[Text]				G_SecondaryWeapons;		// Current player secondary weapons
 declare Integer[Text]				G_PrimaryWeapons;		// Current player secondary weapons
@@ -48,6 +55,76 @@ declare Ident 						G_CustomPlasmaGun;
 declare Ident 						G_CustomElectricPistol;
 declare Ident 						G_CustomShotgun;
 declare Ident 						G_CustomBlowBomb;
+
+***AnnounceHalfTime***
+***
+Message::CleanAllMessages();
+foreach(Player in Players)
+{
+	declare MSG1 = "";
+	declare MSG2 = "";
+	switch(Player.User.Language)
+	{
+		case "pl": { MSG1 = "$fc0Połowa"; MSG2 = "Zamiana stron"; }
+		case "fr": { MSG1 = "$fc0Mi-temps"; MSG2 = "Changement de côté"; }
+		case "ru": { MSG1 = "$fc0Прошла половина матча"; MSG2 = "Переключение стороны"; }
+		case "it": { MSG1 = "$fcMetà"; MSG2 = "Il cambiamento dei lati"; }
+		case "de": { MSG1 = "$fc0Halbzeit"; MSG2 = "Seitenwechsel"; }
+		default: { MSG1 = "$fc0Half-Time"; MSG2 = "Switching sides"; }
+	}
+	Message::SendBigMessage(Player, MSG1, 5000, 0, CUIConfig::EUISound::StartMatch, 3);
+	Message::SendStatusMessage(Player, MSG2, 5000, 0);
+}
+foreach(Spectator in Spectators)
+{
+	declare MSG1 = "";
+	declare MSG2 = "";
+	switch(Spectator.User.Language)
+	{
+		case "pl": { MSG1 = "$fc0Połowa"; MSG2 = "Zamiana stron"; }
+		case "fr": { MSG1 = "$fc0Mi-temps"; MSG2 = "Changement de côté"; }
+		case "ru": { MSG1 = "$fc0Половина матча"; MSG2 = "Переключение стороны"; }
+		case "it": { MSG1 = "$fcMetà"; MSG2 = "Il cambiamento dei lati"; }
+		case "de": { MSG1 = "$fc0Halbzeit"; MSG2 = "Seitenwechsel"; }
+		default: { MSG1 = "$fc0Half-Time"; MSG2 = "Switching sides"; }
+	}
+	Message::SendBigMessage(Spectator, MSG1, 5000, 0, CUIConfig::EUISound::StartMatch, 3);
+	Message::SendStatusMessage(Spectator, MSG2, 5000, 0);
+}
+***
+
+***AnnounceFinalRound***
+***
+Message::CleanAllMessages();
+foreach(Player in Players)
+{
+	declare MSG = "";
+	switch(Player.User.Language)
+	{
+		case "pl": MSG = "$fc0Ostateczna runda";
+		case "fr": MSG = "$fc0Dernière manche";
+		case "ru": MSG = "$fc0Финальный раунд";
+		case "it": MSG = "$fc0L’ultimo turno";
+		case "de": MSG = "$fc0Finale Runde";
+		default: MSG = "$fc0Final Round";
+	}
+	Message::SendBigMessage(Player, MSG, 5000, 0, CUIConfig::EUISound::StartMatch, 3);
+}
+foreach(Spectator in Spectators)
+{
+	declare MSG = "";
+	switch(Spectator.User.Language)
+	{
+		case "pl": MSG = "$fc0Ostateczna runda";
+		case "fr": MSG = "$fc0Dernière manche";
+		case "ru": MSG = "$fc0Финальный раунд";
+		case "it": MSG = "$fc0L’ultimo turno";
+		case "de": MSG = "$fc0Finale Runde";
+		default: MSG = "$fc0Final Round";
+	}
+	Message::SendBigMessage(Spectator, MSG, 5000, 0, CUIConfig::EUISound::StartMatch, 3);
+}
+***
 
 ***AnnounceHeadshot***
 ***
@@ -72,8 +149,8 @@ if (headdistance < 0.2)
 	declare UI <=> UIManager.GetUI(Event.Shooter);
 	if(UI != Null)
 	{
-		declare netwrite Net_Cash for UI = S_StartCash;
-		Net_Cash += C_CashForHeadshotHit;
+		declare netwrite Net_RoundRewards for UI = 0;
+		Net_RoundRewards += C_CashForHeadshotHit;
 	}	
 	Event.ShooterPoints += 1;
 	Event.Damage += 100;
@@ -103,8 +180,8 @@ if (headdistance < 0.2)
 	declare UI <=> UIManager.GetUI(Event.Shooter);
 	if(UI != Null)
 	{
-		declare netwrite Net_Cash for UI = S_StartCash;
-		Net_Cash += C_CashForHeadshotHit;
+		declare netwrite Net_RoundRewards for UI = 0;
+		Net_RoundRewards += C_CashForHeadshotHit;
 	}	
 	Points += 1;
 	Damage += 100;
@@ -126,61 +203,62 @@ declare stutz = ShootPosi + (gamma*ShootDir);
 ***OnNearMiss***
 ***
 if (Event.Shooter == Null || Event.Victim == Null || Event.Shooter == Event.Victim) Discard(Event);
-			else 
-			{
-				if (Event.WeaponNum == GetWeaponNum(CSmMode::EWeapon::Laser)) 
-				{
-					declare MaxMissDist = 0.25;
-					if (Event.Shooter != Null && Event.Victim != Null) 
-					{
-						declare Distance = MathLib::Distance(Event.Shooter.Position, Event.Victim.Position);
-						MaxMissDist = Distance * 2 / 100;
-						if (MaxMissDist > 0.2) MaxMissDist = 0.2;
+else 
+{
+	if (Event.WeaponNum == GetWeaponNum(CSmMode::EWeapon::Laser)) 
+	{
+		declare MaxMissDist = 0.25;
+		if (Event.Shooter != Null && Event.Victim != Null) 
+		{
+			declare Distance = MathLib::Distance(Event.Shooter.Position, Event.Victim.Position);
+			MaxMissDist = Distance * 2 / 100;
+			if (MaxMissDist > 0.2) MaxMissDist = 0.2;
 	
-						if (Event.MissDist <= MaxMissDist)
-						{
-							declare MSG1 = "";
-							switch(Event.Shooter.User.Language)
-							{
-								case "pl": MSG1 = "Chybiłeś o $ff0%2cm$g gracza $<%1$>.";
-								case "fr": MSG1 = "Tu as loupé $<%1$> de $ff0%2cm.";
-								case "ru": MSG1 = "Вы промахнулись по $<%1$> на $ff0%2см.";
-								case "it": MSG1 = "È mancato $ff0%2cm$g al giocatore $<%1$>.";
-								case "de": MSG1 = "$<%1$> um $ff0%2cm verfehlt.";
-								default: MSG1 = "You missed $<%1$> by $ff0%2cm.";
-							}
-
-							declare MSG2 = "";
-							switch(Event.Victim.User.Language)
-							{
-								case "pl": MSG2 = "Uniknąłeś trafienia z lasera $<%1$> o $ff0%2cm.";
-								case "fr": MSG2 = "Tu as esquivé le laser de $<%1$> de $ff0%2cm.";
-								case "ru": MSG2 = "Вы уклонились от лазера $<%1$> на $ff0%2см.";
-								case "it": MSG2 = "Hai evitato un colpito di laser $<%1$> di $ff0%2cm.";
-								case "de": MSG2 = "Der Laser hat $<%1$> um $ff0%2cm verfehlt.";
-								default: MSG2 = "You dodged $<%1$> laser by $ff0%2cm.";
-							}
-							if (Event.MissDist < 0.01)
-							{
-								Message::SendStatusMessage(Event.Shooter, TextLib::Compose(MSG1, Event.Victim.Name, TextLib::ToText(1)), 3000, 2);
-								Message::SendStatusMessage(Event.Victim, TextLib::Compose(MSG2, Event.Shooter.Name), 3000, 2);
-							}
-							else
-							{
-								Message::SendStatusMessage(Event.Shooter, TextLib::Compose(MSG1, Event.Victim.Name, TextLib::ToText(MathLib::CeilingInteger(Event.MissDist*100))), 3000, 2);
-								Message::SendStatusMessage(Event.Victim, TextLib::Compose(MSG2, Event.Shooter.Name, TextLib::ToText(MathLib::CeilingInteger(Event.MissDist*100))), 3000, 2);
-							}	
-							XmlRpc::OnNearMiss(Event);
-							PassOn(Event);
-						}
-						else Discard(Event);
-					}
+			if (Event.MissDist <= MaxMissDist)
+			{
+				declare MSG1 = "";
+				switch(Event.Shooter.User.Language)
+				{
+					case "pl": MSG1 = "Chybiłeś o $ff0%2cm$g gracza $<%1$>.";
+					case "fr": MSG1 = "Tu as loupé $<%1$> de $ff0%2cm.";
+					case "ru": MSG1 = "Вы промахнулись по $<%1$> на $ff0%2см.";
+					case "it": MSG1 = "È mancato $ff0%2cm$g al giocatore $<%1$>.";
+					case "de": MSG1 = "$<%1$> um $ff0%2cm verfehlt.";
+					default: MSG1 = "You missed $<%1$> by $ff0%2cm.";
 				}
+
+				declare MSG2 = "";
+				switch(Event.Victim.User.Language)
+				{
+					case "pl": MSG2 = "Uniknąłeś trafienia z lasera $<%1$> o $ff0%2cm.";
+					case "fr": MSG2 = "Tu as esquivé le laser de $<%1$> de $ff0%2cm.";
+					case "ru": MSG2 = "Вы уклонились от лазера $<%1$> на $ff0%2см.";
+					case "it": MSG2 = "Hai evitato un colpito di laser $<%1$> di $ff0%2cm.";
+					case "de": MSG2 = "Der Laser hat $<%1$> um $ff0%2cm verfehlt.";
+					default: MSG2 = "You dodged $<%1$> laser by $ff0%2cm.";
+				}
+				if (Event.MissDist < 0.01)
+				{
+					Message::SendStatusMessage(Event.Shooter, TextLib::Compose(MSG1, Event.Victim.Name, TextLib::ToText(1)), 3000, 2);
+					Message::SendStatusMessage(Event.Victim, TextLib::Compose(MSG2, Event.Shooter.Name), 3000, 2);
+				}
+				else
+				{
+					Message::SendStatusMessage(Event.Shooter, TextLib::Compose(MSG1, Event.Victim.Name, TextLib::ToText(MathLib::CeilingInteger(Event.MissDist*100))), 3000, 2);
+					Message::SendStatusMessage(Event.Victim, TextLib::Compose(MSG2, Event.Shooter.Name, TextLib::ToText(MathLib::CeilingInteger(Event.MissDist*100))), 3000, 2);
+				}	
+				XmlRpc::OnNearMiss(Event);
+				PassOn(Event);
 			}
+			else Discard(Event);
+		}
+	}
+}
 ***
 
 ***StartServer***
 ***
+VoteMap::Load();
 Sound::Load();
 Sound::Attach();
 
@@ -236,12 +314,35 @@ Layers::Detach("Players");
 ***EndServer***
 ***
 Sound::Unload();
+VoteMap::Unload();
 Layers::Destroy("Shop");
 Layers::Destroy("Players");
 Layers::Clean();
 ***
 
-Text Private_UpdateLayerShop(Integer _AttackingClan) {
+Boolean SC_IsAfterHalfTime()
+{
+	if(MB_SectionRoundNb > S_MapPointsLimit) return True;
+	return False;
+}
+
+Void SC_VoteForNextMap() 
+{
+	if (!S_MapVoteSystem) return;
+	
+	VoteMap::Begin();
+	
+	while (!VoteMap::CanStop()) 
+	{
+		MB_Yield();
+		VoteMap::Loop();
+	}
+	
+	VoteMap::End();
+}
+
+Text Private_UpdateLayerShop(Integer _AttackingClan) 
+{
 	if(ServerShutdownRequested || MatchEndRequested)
 	{
 		MB_StopMap = True;
@@ -262,7 +363,7 @@ Text Private_UpdateLayerShop(Integer _AttackingClan) {
       <buy8>Blow Bomb</buy8>
       <buy9>Burning grenades</buy9>
       <buy10>1 additional armor</buy10>
-      <buy11>3 additional armors</buy11>
+      <buy11>2 additional armors</buy11>
       <rewards>Cash rewards</rewards>
 	  <hit>Hit:</hit>
 	  <head>Headshot hit:</head>
@@ -272,7 +373,7 @@ Text Private_UpdateLayerShop(Integer _AttackingClan) {
 	  <loss>Loss:</loss>
       <primary>Buy primary weapon</primary>
       <sec>Buy secondary seapon</sec>
-      <abi>Buy abilities</abi>
+      <abi>Buy skills</abi>
 	  <abitip>(Works only 1 round)</abitip>
       <rule1>- Use your money to buy equipment.</rule1>
       <rule2>- You can buy only one secondary weapon and one primary weapon.</rule2>
@@ -291,10 +392,10 @@ Text Private_UpdateLayerShop(Integer _AttackingClan) {
       <buy8>Bomba</buy8>
       <buy9>Płonące Granaty</buy9>
       <buy10>1 dodatkowy pancerz</buy10>
-      <buy11>3 dodatkowe pancerze</buy11>
+      <buy11>2 dodatkowe pancerze</buy11>
       <rewards>Jak zdobyć hajs?</rewards>
 	  <hit>Trafienie:</hit>
-	  <head>Traf. (Headshot):</head>
+	  <head>Traf. w głowę:</head>
 	  <kill>Eliminacja:</kill>
 	  <capture>Zdobycz:</capture>
 	  <win>Zwycięstwo:</win>
@@ -311,767 +412,204 @@ Text Private_UpdateLayerShop(Integer _AttackingClan) {
 </dico>
 <script><!--
 #Include "TextLib" as TL
+
 main() 
 {
-	declare L_Buy1 <=> (Page.GetFirstChild("L_buy1") as CMlLabel);
-	declare L_Buy2 <=> (Page.GetFirstChild("L_buy2") as CMlLabel);
-	declare L_Buy3 <=> (Page.GetFirstChild("L_buy3") as CMlLabel);
-	declare L_Buy4 <=> (Page.GetFirstChild("L_buy4") as CMlLabel);
-	declare L_Buy5 <=> (Page.GetFirstChild("L_buy5") as CMlLabel);
-	declare L_Buy6 <=> (Page.GetFirstChild("L_buy6") as CMlLabel);
-	declare L_Buy7 <=> (Page.GetFirstChild("L_buy7") as CMlLabel);
-	declare L_Buy8 <=> (Page.GetFirstChild("L_buy8") as CMlLabel);
-	declare L_Buy9 <=> (Page.GetFirstChild("L_buy9") as CMlLabel);
-	declare L_Buy10 <=> (Page.GetFirstChild("L_buy10") as CMlLabel);
-	declare L_Buy11 <=> (Page.GetFirstChild("L_buy11") as CMlLabel);
-	declare B_Buy1 <=> (Page.GetFirstChild("B_buy1") as CMlLabel);
-	declare B_Buy2 <=> (Page.GetFirstChild("B_buy2") as CMlLabel);
-	declare B_Buy3 <=> (Page.GetFirstChild("B_buy3") as CMlLabel);
-	declare B_Buy4 <=> (Page.GetFirstChild("B_buy4") as CMlLabel);
-	declare B_Buy5 <=> (Page.GetFirstChild("B_buy5") as CMlLabel);
-	declare B_Buy6 <=> (Page.GetFirstChild("B_buy6") as CMlLabel);
-	declare B_Buy7 <=> (Page.GetFirstChild("B_buy7") as CMlLabel);
-	declare B_Buy8 <=> (Page.GetFirstChild("B_buy8") as CMlLabel);
-	declare B_Buy9 <=> (Page.GetFirstChild("B_buy9") as CMlLabel);
-	declare B_Buy10 <=> (Page.GetFirstChild("B_buy10") as CMlLabel);
-	declare B_Buy11 <=> (Page.GetFirstChild("B_buy11") as CMlLabel);
+	declare LabelsBuy = CMlLabel[Integer];
+	declare ButtonsBuy = CMlLabel[Integer];
+	declare I = 1;
+	for(I, 1, 11) LabelsBuy[I] = (Page.GetFirstChild("L_buy"^I) as CMlLabel);
+	for(I, 1, 11) ButtonsBuy[I] = (Page.GetFirstChild("B_buy"^I) as CMlLabel);
 	declare L_Cash <=> (Page.GetFirstChild("L_Cash") as CMlLabel);
 	
-	if (InputPlayer != Null)
+	// Reset skills each round
+	declare netwrite Net_Bought for UI = [False, False, False, False, False, False, False, False, False, False, False];
+	declare netread Net_RoundRewards for UI = 0;
+	declare netwrite Net_Cash for UI = {{{S_StartCash}}};
+	declare netread Net_ServerWantReset for UI = False;
+	Net_Bought[0] = False;
+	Net_Bought[9] = False;
+	Net_Bought[10] = False;
+
+	if({{{MB_SectionRoundNb <= 1}}}) Net_Cash = {{{S_StartCash}}};
+	else Net_Cash += Net_RoundRewards;
+
+	if(Net_ServerWantReset)
 	{
-		declare netwrite Net_Bought for UI = [False, False, False, False, False, False, False, False, False, False, False];
-		declare netwrite Net_ShopBill for UI = 0;
 		declare netwrite Net_SecWpn for UI = 0;
 		declare netwrite Net_PrimWpn for UI = 0;
-		declare netread Net_IsDead for UI = 0;
-		Net_ShopBill = 0;
-		if({{{MB_SectionRoundNb}}} == 1)
-		{
-			Net_Bought = [False, False, False, False, False, False, False, False, False, False, False];
-			Net_SecWpn = 0;
-			Net_PrimWpn = 0;
-		}
-		if(Net_IsDead == 1)
-		{
-			Net_Bought = [False, False, False, False, False, False, False, False, False, False, False];
-			Net_SecWpn = 0;
-			Net_PrimWpn = 0;
-		}
-		Net_Bought[0] = False;
-		Net_Bought[9] = False;
-		Net_Bought[10] = False;
+		Net_Bought = [False, False, False, False, False, False, False, False, False, False, False];
+		Net_SecWpn = 0;
+		Net_PrimWpn = 0;
 	}
 	
 	while (True) 
 	{
 		yield;
-		if (InputPlayer == Null) continue;
 
-		declare ShopPrices = {{{C_ShopPrices}}};
 		declare netwrite Net_Bought for UI = [False, False, False, False, False, False, False, False, False, False, False];
-		declare netread Net_Cash for UI = {{{S_StartCash}}};
-		declare netwrite Net_ShopBill for UI = 0;
 		declare netwrite Net_SecWpn for UI = 0;
 		declare netwrite Net_PrimWpn for UI = 0;
-		L_Cash.SetText(TL::Compose(_("$cdc%1 $9f0$$"), TL::ToText(Net_Cash - Net_ShopBill)));
+		declare ShopPrices = {{{C_ShopPrices}}};
+
+		declare netwrite Net_Cash for UI = {{{S_StartCash}}};
+		if(Net_Cash > 16000) Net_Cash = 16000;
+		L_Cash.SetText(TL::Compose(_("$cdc%1 $9f0$$"), TL::ToText(Net_Cash)));
 		
 		if(Net_Bought[0])
 		{
-			B_Buy1.Hide();
-			L_Buy1.Show();
-			L_Buy1.SetText("$9f0Bought");
+			ButtonsBuy[1].Hide();
+			LabelsBuy[1].Show();
+			LabelsBuy[1].SetText("$9f0Bought");
 		}	
-		else if(Net_Cash - Net_ShopBill < ShopPrices[1])
+		else if(Net_Cash < ShopPrices[1])
 		{
-			L_Buy1.Show();
-			L_Buy1.SetText(TL::Compose(_("$f90Need %1$$"), TL::ToText(ShopPrices[1] - Net_Cash + Net_ShopBill)));
-			B_Buy1.Hide();
+			LabelsBuy[1].Show();
+			LabelsBuy[1].SetText(TL::Compose(_("$f60%1$$"), TL::ToText(ShopPrices[1])));
+			ButtonsBuy[1].Hide();
 		}	
 		else
 		{
-			B_Buy1.SetText("Buy ("^ShopPrices[1]^"$$)");
-			L_Buy1.Hide();
+			ButtonsBuy[1].SetText("Buy ("^ShopPrices[1]^"$$)");
+			LabelsBuy[1].Hide();
 		}	
 		
 		switch(Net_SecWpn)
 		{
 			case 1:
 			{
-				B_Buy2.Hide();
-				L_Buy2.Show();
-				L_Buy2.SetText("$9f0Bought");
-				if(Net_Cash - Net_ShopBill < ShopPrices[3])
+				ButtonsBuy[2].Hide();
+				LabelsBuy[2].Show();
+				LabelsBuy[2].SetText("$9f0Bought");
+				if(Net_Cash < ShopPrices[3])
 				{
-					L_Buy3.Show();
-					L_Buy3.SetText(TL::Compose(_("$f90Need %1$$"), TL::ToText(ShopPrices[3]- Net_Cash + Net_ShopBill)));
-					B_Buy3.Hide();
+					LabelsBuy[3].Show();
+					LabelsBuy[3].SetText(TL::Compose(_("$f60%1$$"), TL::ToText(ShopPrices[3])));
+					ButtonsBuy[3].Hide();
 				}	
 				else
 				{
-					B_Buy3.Show();
-					B_Buy3.SetText("Buy ("^ShopPrices[3]^"$$)");
-					L_Buy3.Hide();
+					ButtonsBuy[3].Show();
+					ButtonsBuy[3].SetText("Buy ("^ShopPrices[3]^"$$)");
+					LabelsBuy[3].Hide();
 				}	
 			}
 			case 2:
 			{
-				B_Buy3.Hide();
-				L_Buy3.Show();
-				L_Buy3.SetText("$9f0Bought");
-				if(Net_Cash - Net_ShopBill < ShopPrices[2])
+				ButtonsBuy[3].Hide();
+				LabelsBuy[3].Show();
+				LabelsBuy[3].SetText("$9f0Bought");
+				if(Net_Cash < ShopPrices[2])
 				{
-					L_Buy2.Show();
-					L_Buy2.SetText(TL::Compose(_("$f90Need %1$$"), TL::ToText(ShopPrices[2] - Net_Cash+ Net_ShopBill)));
-					B_Buy2.Hide();
+					LabelsBuy[2].Show();
+					LabelsBuy[2].SetText(TL::Compose(_("$f60%1$$"), TL::ToText(ShopPrices[2])));
+					ButtonsBuy[2].Hide();
 				}	
 				else
 				{
-					B_Buy2.Show();
-					B_Buy2.SetText("Buy ("^ShopPrices[2]^"$$)");
-					L_Buy2.Hide();
+					ButtonsBuy[2].Show();
+					ButtonsBuy[2].SetText("Buy ("^ShopPrices[2]^"$$)");
+					LabelsBuy[2].Hide();
 				}
 			}
 		}
-		
-		switch(Net_PrimWpn)
+		declare P = 3;
+		for(P, 3, 8)
 		{
-			case 3:
+			if(Net_Cash < ShopPrices[P+1])
 			{
-				B_Buy4.Hide();
-				L_Buy4.Show();
-				L_Buy4.SetText("$9f0Bought");
-				
-				if(Net_Cash - Net_ShopBill < ShopPrices[5])
-				{
-					L_Buy5.Show();
-					L_Buy5.SetText(TL::Compose(_("$f90Need %1$$"), TL::ToText(ShopPrices[5] - Net_Cash + Net_ShopBill)));
-					B_Buy5.Hide();
-				}	
-				else
-				{
-					B_Buy5.Show();
-					B_Buy5.SetText("Buy ("^ShopPrices[5]^"$$)");
-					L_Buy5.Hide();
-				}
-				
-				if(Net_Cash - Net_ShopBill < ShopPrices[6])
-				{
-					L_Buy6.Show();
-					L_Buy6.SetText(TL::Compose(_("$f90Need %1$$"), TL::ToText(ShopPrices[6] - Net_Cash + Net_ShopBill)));
-					B_Buy6.Hide();
-				}	
-				else
-				{
-					B_Buy6.Show();
-					B_Buy6.SetText("Buy ("^ShopPrices[6]^"$$)");
-					L_Buy6.Hide();
-				}
-				
-				if(Net_Cash - Net_ShopBill < ShopPrices[7])
-				{
-					L_Buy7.Show();
-					L_Buy7.SetText(TL::Compose(_("$f90Need %1$$"), TL::ToText(ShopPrices[7] - Net_Cash + Net_ShopBill)));
-					B_Buy7.Hide();
-				}	
-				else
-				{
-					B_Buy7.Show();
-					B_Buy7.SetText("Buy ("^ShopPrices[7]^"$$)");
-					L_Buy7.Hide();
-				}	
-				
-				if(Net_Cash - Net_ShopBill < ShopPrices[8])
-				{
-					L_Buy8.Show();
-					L_Buy8.SetText(TL::Compose(_("$f90Need %1$$"), TL::ToText(ShopPrices[8] - Net_Cash + Net_ShopBill)));
-					B_Buy8.Hide();
-				}	
-				else
-				{
-					B_Buy8.Show();
-					B_Buy8.SetText("Buy ("^ShopPrices[8]^"$$)");
-					L_Buy8.Hide();
-				}	
-				
-				if(Net_Cash - Net_ShopBill < ShopPrices[9])
-				{
-					L_Buy9.Show();
-					L_Buy9.SetText(TL::Compose(_("$f90Need %1$$"), TL::ToText(ShopPrices[9] - Net_Cash + Net_ShopBill)));
-					B_Buy9.Hide();
-				}	
-				else
-				{
-					B_Buy9.Show();
-					B_Buy9.SetText("Buy ("^ShopPrices[9]^"$$)");
-					L_Buy9.Hide();
-				}
+				LabelsBuy[P+1].Show();
+				LabelsBuy[P+1].SetText(TL::Compose(_("$f60%1$$"), TL::ToText(ShopPrices[P+1])));
+				ButtonsBuy[P+1].Hide();
+			}	
+			else
+			{
+				ButtonsBuy[P+1].Show();
+				ButtonsBuy[P+1].SetText("Buy ("^ShopPrices[P+1]^"$$)");
+				LabelsBuy[P+1].Hide();
 			}
-			case 4:
+
+			if(P == Net_PrimWpn)
 			{
-				B_Buy5.Hide();
-				L_Buy5.Show();
-				L_Buy5.SetText("$9f0Bought");
-				
-				if(Net_Cash - Net_ShopBill < ShopPrices[4])
-				{
-					L_Buy4.Show();
-					L_Buy4.SetText(TL::Compose(_("$f90Need %1$$"), TL::ToText(ShopPrices[4] - Net_Cash + Net_ShopBill)));
-					B_Buy4.Hide();
-				}	
-				else
-				{
-					B_Buy4.Show();
-					B_Buy4.SetText("Buy ("^ShopPrices[4]^"$$)");
-					L_Buy4.Hide();
-				}
-				
-				if(Net_Cash - Net_ShopBill < ShopPrices[6])
-				{
-					L_Buy6.Show();
-					L_Buy6.SetText(TL::Compose(_("$f90Need %1$$"), TL::ToText(ShopPrices[6] - Net_Cash + Net_ShopBill)));
-					B_Buy6.Hide();
-				}	
-				else
-				{
-					B_Buy6.Show();
-					B_Buy6.SetText("Buy ("^ShopPrices[6]^"$$)");
-					L_Buy6.Hide();
-				}
-				
-				if(Net_Cash - Net_ShopBill < ShopPrices[7])
-				{
-					L_Buy7.Show();
-					L_Buy7.SetText(TL::Compose(_("$f90Need %1$$"), TL::ToText(ShopPrices[7] - Net_Cash + Net_ShopBill)));
-					B_Buy7.Hide();
-				}	
-				else
-				{
-					B_Buy7.Show();
-					B_Buy7.SetText("Buy ("^ShopPrices[7]^"$$)");
-					L_Buy7.Hide();
-				}	
-				
-				if(Net_Cash - Net_ShopBill < ShopPrices[8])
-				{
-					L_Buy8.Show();
-					L_Buy8.SetText(TL::Compose(_("$f90Need %1$$"), TL::ToText(ShopPrices[8] - Net_Cash + Net_ShopBill)));
-					B_Buy8.Hide();
-				}	
-				else
-				{
-					B_Buy8.Show();
-					B_Buy8.SetText("Buy ("^ShopPrices[8]^"$$)");
-					L_Buy8.Hide();
-				}	
-				
-				if(Net_Cash - Net_ShopBill < ShopPrices[9])
-				{
-					L_Buy9.Show();
-					L_Buy9.SetText(TL::Compose(_("$f90Need %1$$"), TL::ToText(ShopPrices[9] - Net_Cash + Net_ShopBill)));
-					B_Buy9.Hide();
-				}	
-				else
-				{
-					B_Buy9.Show();
-					B_Buy9.SetText("Buy ("^ShopPrices[9]^"$$)");
-					L_Buy9.Hide();
-				}
-			}
-			case 5:
-			{
-				B_Buy6.Hide();
-				L_Buy6.Show();
-				L_Buy6.SetText("$9f0Bought");
-				
-				if(Net_Cash - Net_ShopBill < ShopPrices[4])
-				{
-					L_Buy4.Show();
-					L_Buy4.SetText(TL::Compose(_("$f90Need %1$$"), TL::ToText(ShopPrices[4] - Net_Cash + Net_ShopBill)));
-					B_Buy4.Hide();
-				}	
-				else
-				{
-					B_Buy4.Show();
-					B_Buy4.SetText("Buy ("^ShopPrices[4]^"$$)");
-					L_Buy4.Hide();
-				}
-				
-				if(Net_Cash - Net_ShopBill < ShopPrices[5])
-				{
-					L_Buy5.Show();
-					L_Buy5.SetText(TL::Compose(_("$f90Need %1$$"), TL::ToText(ShopPrices[5] - Net_Cash + Net_ShopBill)));
-					B_Buy5.Hide();
-				}	
-				else
-				{
-					B_Buy5.Show();
-					B_Buy5.SetText("Buy ("^ShopPrices[5]^"$$)");
-					L_Buy5.Hide();
-				}
-				
-				if(Net_Cash - Net_ShopBill < ShopPrices[7])
-				{
-					L_Buy7.Show();
-					L_Buy7.SetText(TL::Compose(_("$f90Need %1$$"), TL::ToText(ShopPrices[7] - Net_Cash + Net_ShopBill)));
-					B_Buy7.Hide();
-				}	
-				else
-				{
-					B_Buy7.Show();
-					B_Buy7.SetText("Buy ("^ShopPrices[7]^"$$)");
-					L_Buy7.Hide();
-				}	
-				
-				if(Net_Cash - Net_ShopBill < ShopPrices[8])
-				{
-					L_Buy8.Show();
-					L_Buy8.SetText(TL::Compose(_("$f90Need %1$$"), TL::ToText(ShopPrices[8] - Net_Cash + Net_ShopBill)));
-					B_Buy8.Hide();
-				}	
-				else
-				{
-					B_Buy8.Show();
-					B_Buy8.SetText("Buy ("^ShopPrices[8]^"$$)");
-					L_Buy8.Hide();
-				}	
-				
-				if(Net_Cash - Net_ShopBill < ShopPrices[9])
-				{
-					L_Buy9.Show();
-					L_Buy9.SetText(TL::Compose(_("$f90Need %1$$"), TL::ToText(ShopPrices[9] - Net_Cash + Net_ShopBill)));
-					B_Buy9.Hide();
-				}	
-				else
-				{
-					B_Buy9.Show();
-					B_Buy9.SetText("Buy ("^ShopPrices[9]^"$$)");
-					L_Buy9.Hide();
-				}
-			}
-			case 6:
-			{
-				B_Buy7.Hide();
-				L_Buy7.Show();
-				L_Buy7.SetText("$9f0Bought");
-				
-				if(Net_Cash - Net_ShopBill < ShopPrices[4])
-				{
-					L_Buy4.Show();
-					L_Buy4.SetText(TL::Compose(_("$f90Need %1$$"), TL::ToText(ShopPrices[4] - Net_Cash + Net_ShopBill)));
-					B_Buy4.Hide();
-				}	
-				else
-				{
-					B_Buy4.Show();
-					B_Buy4.SetText("Buy ("^ShopPrices[4]^"$$)");
-					L_Buy4.Hide();
-				}
-				
-				if(Net_Cash - Net_ShopBill < ShopPrices[5])
-				{
-					L_Buy5.Show();
-					L_Buy5.SetText(TL::Compose(_("$f90Need %1$$"), TL::ToText(ShopPrices[5] - Net_Cash + Net_ShopBill)));
-					B_Buy5.Hide();
-				}	
-				else
-				{
-					B_Buy5.Show();
-					B_Buy5.SetText("Buy ("^ShopPrices[5]^"$$)");
-					L_Buy5.Hide();
-				}
-				
-				if(Net_Cash - Net_ShopBill < ShopPrices[6])
-				{
-					L_Buy6.Show();
-					L_Buy6.SetText(TL::Compose(_("$f90Need %1$$"), TL::ToText(ShopPrices[6] - Net_Cash + Net_ShopBill)));
-					B_Buy6.Hide();
-				}	
-				else
-				{
-					B_Buy6.Show();
-					B_Buy6.SetText("Buy ("^ShopPrices[6]^"$$)");
-					L_Buy6.Hide();
-				}	
-				
-				if(Net_Cash - Net_ShopBill < ShopPrices[8])
-				{
-					L_Buy8.Show();
-					L_Buy8.SetText(TL::Compose(_("$f90Need %1$$"), TL::ToText(ShopPrices[8] - Net_Cash + Net_ShopBill)));
-					B_Buy8.Hide();
-				}	
-				else
-				{
-					B_Buy8.Show();
-					B_Buy8.SetText("Buy ("^ShopPrices[8]^"$$)");
-					L_Buy8.Hide();
-				}	
-				
-				if(Net_Cash - Net_ShopBill < ShopPrices[9])
-				{
-					L_Buy9.Show();
-					L_Buy9.SetText(TL::Compose(_("$f90Need %1$$"), TL::ToText(ShopPrices[9] - Net_Cash + Net_ShopBill)));
-					B_Buy9.Hide();
-				}	
-				else
-				{
-					B_Buy9.Show();
-					B_Buy9.SetText("Buy ("^ShopPrices[9]^"$$)");
-					L_Buy9.Hide();
-				}
-			}
-			case 7:
-			{
-				B_Buy8.Hide();
-				L_Buy8.Show();
-				L_Buy8.SetText("$9f0Bought");
-				
-				if(Net_Cash - Net_ShopBill < ShopPrices[4])
-				{
-					L_Buy4.Show();
-					L_Buy4.SetText(TL::Compose(_("$f90Need %1$$"), TL::ToText(ShopPrices[4] - Net_Cash + Net_ShopBill)));
-					B_Buy4.Hide();
-				}	
-				else
-				{
-					B_Buy4.Show();
-					B_Buy4.SetText("Buy ("^ShopPrices[4]^"$$)");
-					L_Buy4.Hide();
-				}
-				
-				if(Net_Cash - Net_ShopBill < ShopPrices[5])
-				{
-					L_Buy5.Show();
-					L_Buy5.SetText(TL::Compose(_("$f90Need %1$$"), TL::ToText(ShopPrices[5] - Net_Cash + Net_ShopBill)));
-					B_Buy5.Hide();
-				}	
-				else
-				{
-					B_Buy5.Show();
-					B_Buy5.SetText("Buy ("^ShopPrices[5]^"$$)");
-					L_Buy5.Hide();
-				}
-				
-				if(Net_Cash - Net_ShopBill < ShopPrices[6])
-				{
-					L_Buy6.Show();
-					L_Buy6.SetText(TL::Compose(_("$f90Need %1$$"), TL::ToText(ShopPrices[6] - Net_Cash + Net_ShopBill)));
-					B_Buy6.Hide();
-				}	
-				else
-				{
-					B_Buy6.Show();
-					B_Buy6.SetText("Buy ("^ShopPrices[6]^"$$)");
-					L_Buy6.Hide();
-				}	
-				
-				if(Net_Cash - Net_ShopBill < ShopPrices[7])
-				{
-					L_Buy7.Show();
-					L_Buy7.SetText(TL::Compose(_("$f90Need %1$$"), TL::ToText(ShopPrices[7] - Net_Cash + Net_ShopBill)));
-					B_Buy7.Hide();
-				}	
-				else
-				{
-					B_Buy7.Show();
-					B_Buy7.SetText("Buy ("^ShopPrices[7]^"$$)");
-					L_Buy7.Hide();
-				}	
-				
-				if(Net_Cash - Net_ShopBill < ShopPrices[9])
-				{
-					L_Buy9.Show();
-					L_Buy9.SetText(TL::Compose(_("$f90Need %1$$"), TL::ToText(ShopPrices[9] - Net_Cash + Net_ShopBill)));
-					B_Buy9.Hide();
-				}	
-				else
-				{
-					B_Buy9.Show();
-					B_Buy9.SetText("Buy ("^ShopPrices[9]^"$$)");
-					L_Buy9.Hide();
-				}
-			}
-			case 8:
-			{
-				B_Buy9.Hide();
-				L_Buy9.Show();
-				L_Buy9.SetText("$9f0Bought");
-				
-				if(Net_Cash - Net_ShopBill < ShopPrices[4])
-				{
-					L_Buy4.Show();
-					L_Buy4.SetText(TL::Compose(_("$f90Need %1$$"), TL::ToText(ShopPrices[4] - Net_Cash + Net_ShopBill)));
-					B_Buy4.Hide();
-				}	
-				else
-				{
-					B_Buy4.Show();
-					B_Buy4.SetText("Buy ("^ShopPrices[4]^"$$)");
-					L_Buy4.Hide();
-				}
-				
-				if(Net_Cash - Net_ShopBill < ShopPrices[5])
-				{
-					L_Buy5.Show();
-					L_Buy5.SetText(TL::Compose(_("$f90Need %1$$"), TL::ToText(ShopPrices[5] - Net_Cash + Net_ShopBill)));
-					B_Buy5.Hide();
-				}	
-				else
-				{
-					B_Buy5.Show();
-					B_Buy5.SetText("Buy ("^ShopPrices[5]^"$$)");
-					L_Buy5.Hide();
-				}
-				
-				if(Net_Cash - Net_ShopBill < ShopPrices[6])
-				{
-					L_Buy6.Show();
-					L_Buy6.SetText(TL::Compose(_("$f90Need %1$$"), TL::ToText(ShopPrices[6] - Net_Cash + Net_ShopBill)));
-					B_Buy6.Hide();
-				}	
-				else
-				{
-					B_Buy6.Show();
-					B_Buy6.SetText("Buy ("^ShopPrices[6]^"$$)");
-					L_Buy6.Hide();
-				}	
-				
-				if(Net_Cash - Net_ShopBill < ShopPrices[7])
-				{
-					L_Buy7.Show();
-					L_Buy7.SetText(TL::Compose(_("$f90Need %1$$"), TL::ToText(ShopPrices[7] - Net_Cash + Net_ShopBill)));
-					B_Buy7.Hide();
-				}	
-				else
-				{
-					B_Buy7.Show();
-					B_Buy7.SetText("Buy ("^ShopPrices[7]^"$$)");
-					L_Buy7.Hide();
-				}	
-				
-				if(Net_Cash - Net_ShopBill < ShopPrices[8])
-				{
-					L_Buy8.Show();
-					L_Buy8.SetText(TL::Compose(_("$f90Need %1$$"), TL::ToText(ShopPrices[8] - Net_Cash + Net_ShopBill)));
-					B_Buy8.Hide();
-				}	
-				else
-				{
-					B_Buy8.Show();
-					B_Buy8.SetText("Buy ("^ShopPrices[8]^"$$)");
-					L_Buy8.Hide();
-				}
+				ButtonsBuy[P+1].Hide();
+				LabelsBuy[P+1].Show();
+				LabelsBuy[P+1].SetText("$9f0Bought");
 			}
 		}
-		
-		// Bouncing rockets
-		if(Net_Bought[1])
+
+		for(P, 1, 8)
 		{
-			B_Buy2.Hide();
-			L_Buy2.Show();
-			L_Buy2.SetText("$9f0Bought");
-			Net_Bought[2] = False;
-			Net_SecWpn = 1;
-		}	
-		else if(Net_Cash - Net_ShopBill < ShopPrices[2])
-		{
-			L_Buy2.Show();
-			L_Buy2.SetText(TL::Compose(_("$f90Need %1$$"), TL::ToText(ShopPrices[2] - Net_Cash+ Net_ShopBill)));
-			B_Buy2.Hide();
-		}	
-		else
-		{
-			B_Buy2.Show();
-			B_Buy2.SetText("Buy ("^ShopPrices[2]^"$$)");
-			L_Buy2.Hide();
-		}	
-		// Electric Pistol
-		if(Net_Bought[2])
-		{
-			B_Buy3.Hide();
-			L_Buy3.Show();
-			L_Buy3.SetText("$9f0Bought");
-			Net_Bought[1] = False;
-			Net_SecWpn = 2;
-		}	
-		else if(Net_Cash - Net_ShopBill < ShopPrices[3])
-		{
-			L_Buy3.Show();
-			L_Buy3.SetText(TL::Compose(_("$f90Need %1$$"), TL::ToText(ShopPrices[3]- Net_Cash + Net_ShopBill)));
-			B_Buy3.Hide();
-		}	
-		else
-		{
-			B_Buy3.Show();
-			B_Buy3.SetText("Buy ("^ShopPrices[3]^"$$)");
-			L_Buy3.Hide();
+			if(Net_Bought[P])
+			{
+				ButtonsBuy[P+1].Hide();
+				LabelsBuy[P+1].Show();
+				LabelsBuy[P+1].SetText("$9f0Bought");
+				if(P == 1) Net_Bought[2] = False;
+				else if(P == 2) Net_Bought[1] = False;
+				if(P == 1 || P == 2) Net_SecWpn = P;
+				else Net_PrimWpn = P;
+			}	
+			else if(Net_Cash < ShopPrices[P+1])
+			{
+				LabelsBuy[P+1].Show();
+				LabelsBuy[P+1].SetText(TL::Compose(_("$f60%1$$"), TL::ToText(ShopPrices[P+1])));
+				ButtonsBuy[P+1].Hide();
+			}	
+			else
+			{
+				ButtonsBuy[P+1].Show();
+				ButtonsBuy[P+1].SetText("Buy ("^ShopPrices[P+1]^"$$)");
+				LabelsBuy[P+1].Hide();
+			}
 		}
-		// Plasma Gun
-		if(Net_Bought[3])
-		{
-			B_Buy4.Hide();
-			L_Buy4.Show();
-			L_Buy4.SetText("$9f0Bought");
-			Net_PrimWpn = 3;
 			
-		}	
-		else if(Net_Cash - Net_ShopBill < ShopPrices[4])
-		{
-			L_Buy4.Show();
-			L_Buy4.SetText(TL::Compose(_("$f90Need %1$$"), TL::ToText(ShopPrices[4] - Net_Cash + Net_ShopBill)));
-			B_Buy4.Hide();
-		}	
-		else
-		{
-			B_Buy4.Show();
-			B_Buy4.SetText("Buy ("^ShopPrices[4]^"$$)");
-			L_Buy4.Hide();
-		}
 
-		if(Net_Bought[4])
-		{
-			B_Buy5.Hide();
-			L_Buy5.Show();
-			L_Buy5.SetText("$9f0Bought");
-			Net_PrimWpn = 4;
-		}	
-		else if(Net_Cash - Net_ShopBill < ShopPrices[5])
-		{
-			L_Buy5.Show();
-			L_Buy5.SetText(TL::Compose(_("$f90Need %1$$"), TL::ToText(ShopPrices[5] - Net_Cash + Net_ShopBill)));
-			B_Buy5.Hide();
-		}	
-		else
-		{
-			B_Buy5.Show();
-			B_Buy5.SetText("Buy ("^ShopPrices[5]^"$$)");
-			L_Buy5.Hide();
-		}
-
-		if(Net_Bought[5])
-		{
-			B_Buy6.Hide();
-			L_Buy6.Show();
-			L_Buy6.SetText("$9f0Bought");
-			Net_PrimWpn = 5;
-		}	
-		else if(Net_Cash - Net_ShopBill < ShopPrices[6])
-		{
-			L_Buy6.Show();
-			L_Buy6.SetText(TL::Compose(_("$f90Need %1$$"), TL::ToText(ShopPrices[6] - Net_Cash + Net_ShopBill)));
-			B_Buy6.Hide();
-		}	
-		else
-		{
-			B_Buy6.Show();
-			B_Buy6.SetText("Buy ("^ShopPrices[6]^"$$)");
-			L_Buy6.Hide();
-		}
-
-		if(Net_Bought[6])
-		{
-			B_Buy7.Hide();
-			L_Buy7.Show();
-			L_Buy7.SetText("$9f0Bought");
-			Net_PrimWpn = 6;
-		}	
-		else if(Net_Cash - Net_ShopBill < ShopPrices[7])
-		{
-			L_Buy7.Show();
-			L_Buy7.SetText(TL::Compose(_("$f90Need %1$$"), TL::ToText(ShopPrices[7] - Net_Cash + Net_ShopBill)));
-			B_Buy7.Hide();
-		}	
-		else
-		{
-			B_Buy7.Show();
-			B_Buy7.SetText("Buy ("^ShopPrices[7]^"$$)");
-			L_Buy7.Hide();
-		}
-
-		if(Net_Bought[7])
-		{
-			B_Buy8.Hide();
-			L_Buy8.Show();
-			L_Buy8.SetText("$9f0Bought");
-			Net_PrimWpn = 7;
-		}	
-		else if(Net_Cash - Net_ShopBill < ShopPrices[8])
-		{
-			L_Buy8.Show();
-			L_Buy8.SetText(TL::Compose(_("$f90Need %1$$"), TL::ToText(ShopPrices[8] - Net_Cash + Net_ShopBill)));
-			B_Buy8.Hide();
-		}	
-		else
-		{
-			B_Buy8.Show();
-			B_Buy8.SetText("Buy ("^ShopPrices[8]^"$$)");
-			L_Buy8.Hide();
-		}
-
-		if(Net_Bought[8])
-		{
-			B_Buy9.Hide();
-			L_Buy9.Show();
-			L_Buy9.SetText("$9f0Bought");
-			Net_PrimWpn = 8;
-		}	
-		else if(Net_Cash - Net_ShopBill < ShopPrices[9])
-		{
-			L_Buy9.Show();
-			L_Buy9.SetText(TL::Compose(_("$f90Need %1$$"), TL::ToText(ShopPrices[9] - Net_Cash + Net_ShopBill)));
-			B_Buy9.Hide();
-		}	
-		else
-		{
-			B_Buy9.Show();
-			B_Buy9.SetText("Buy ("^ShopPrices[9]^"$$)");
-			L_Buy9.Hide();
-		}
 		// Shields, If you buy 3 shields, then you shouldn't get access to 1 armor option
 		if(Net_Bought[10])
 		{
-			B_Buy10.Hide();
-			L_Buy10.Hide();
+			ButtonsBuy[10].Hide();
+			LabelsBuy[10].Hide();
 			Net_Bought[9] = False;
 		}
 		else
 		{
 			if(Net_Bought[9])
 			{
-				B_Buy10.Hide();
-				L_Buy10.Show();
-				L_Buy10.SetText("$9f0Bought");
+				ButtonsBuy[10].Hide();
+				LabelsBuy[10].Show();
+				LabelsBuy[10].SetText("$9f0Bought");
 			}	
-			else if(Net_Cash - Net_ShopBill < ShopPrices[10])
+			else if(Net_Cash < ShopPrices[10])
 			{
-				L_Buy10.Show();
-				L_Buy10.SetText(TL::Compose(_("$f90Need %1$$"), TL::ToText(ShopPrices[10] - Net_Cash + Net_ShopBill)));
-				B_Buy10.Hide();	
+				LabelsBuy[10].Show();
+				LabelsBuy[10].SetText(TL::Compose(_("$f60%1$$"), TL::ToText(ShopPrices[10])));
+				ButtonsBuy[10].Hide();
 			}	
 			else
 			{
-				B_Buy10.Show();
-				B_Buy10.SetText("Buy ("^ShopPrices[10]^"$$)");
-				L_Buy10.Hide();
+				ButtonsBuy[10].Show();
+				ButtonsBuy[10].SetText("Buy ("^ShopPrices[10]^"$$)");
+				LabelsBuy[10].Hide();
 			}
 		}	
 
 		if(Net_Bought[10])
 		{
-			B_Buy11.Hide();
-			L_Buy11.Show();
-			L_Buy11.SetText("$9f0Bought");
+			ButtonsBuy[11].Hide();
+			LabelsBuy[11].Show();
+			LabelsBuy[11].SetText("$9f0Bought");
 		}	
-		else if(Net_Cash - Net_ShopBill < ShopPrices[11])
+		else if(Net_Cash < ShopPrices[11])
 		{
-			L_Buy11.Show();
-			L_Buy11.SetText(TL::Compose(_("$f90Need %1$$"), TL::ToText(ShopPrices[11] - Net_Cash + Net_ShopBill)));
-			B_Buy11.Hide();
+			LabelsBuy[11].Show();
+			LabelsBuy[11].SetText(TL::Compose(_("$f60%1$$"), TL::ToText(ShopPrices[11])));
+			ButtonsBuy[11].Hide();
 		}	
 		else
 		{
-			B_Buy11.Show();
-			B_Buy11.SetText("Buy ("^ShopPrices[11]^"$$)");
-			L_Buy11.Hide();
+			ButtonsBuy[11].Show();
+			ButtonsBuy[11].SetText("Buy ("^ShopPrices[11]^"$$)");
+			LabelsBuy[11].Hide();
 		}
 
 		foreach (Event in PendingEvents) 
@@ -1083,19 +621,19 @@ main()
 					if(Event.ControlId == "B_buy1")
 					{
 						Net_Bought[0] = True;
-						Net_ShopBill += ShopPrices[1];
+						Net_Cash -= ShopPrices[1];
 					}	
 					if(Event.ControlId == "B_buy2")
 					{
 						Net_Bought[1] = True; 
 						Net_Bought[2] = False;
-						Net_ShopBill += ShopPrices[2];
+						Net_Cash -= ShopPrices[2];
 					}	
 					if(Event.ControlId == "B_buy3")
 					{
 						Net_Bought[2] = True;
 						Net_Bought[1] = False;
-						Net_ShopBill += ShopPrices[3];
+						Net_Cash -= ShopPrices[3];
 					}	
 					if(Event.ControlId == "B_buy4")
 					{
@@ -1105,7 +643,7 @@ main()
 						Net_Bought[6] = False;
 						Net_Bought[7] = False;
 						Net_Bought[8] = False;
-						Net_ShopBill += ShopPrices[4];
+						Net_Cash -= ShopPrices[4];
 					}	
 					if(Event.ControlId == "B_buy5")
 					{
@@ -1115,7 +653,7 @@ main()
 						Net_Bought[6] = False;
 						Net_Bought[7] = False;
 						Net_Bought[8] = False;
-						Net_ShopBill += ShopPrices[5];
+						Net_Cash -= ShopPrices[5];
 					}	
 					if(Event.ControlId == "B_buy6")
 					{
@@ -1125,7 +663,7 @@ main()
 						Net_Bought[6] = False;
 						Net_Bought[7] = False;
 						Net_Bought[8] = False;
-						Net_ShopBill += ShopPrices[6];
+						Net_Cash -= ShopPrices[6];
 					}	
 					if(Event.ControlId == "B_buy7") 
 					{
@@ -1135,7 +673,7 @@ main()
 						Net_Bought[5] = False;
 						Net_Bought[7] = False;
 						Net_Bought[8] = False;
-						Net_ShopBill += ShopPrices[7];
+						Net_Cash -= ShopPrices[7];
 					}	
 					if(Event.ControlId == "B_buy8")
 					{
@@ -1145,7 +683,7 @@ main()
 						Net_Bought[5] = False;
 						Net_Bought[6] = False;
 						Net_Bought[8] = False;
-						Net_ShopBill += ShopPrices[8];
+						Net_Cash -= ShopPrices[8];
 					}	
 					if(Event.ControlId == "B_buy9")
 					{
@@ -1155,19 +693,19 @@ main()
 						Net_Bought[5] = False;
 						Net_Bought[6] = False;
 						Net_Bought[7] = False;
-						Net_ShopBill += ShopPrices[9];
+						Net_Cash -= ShopPrices[9];
 					}	
 					if(Event.ControlId == "B_buy10")
 					{
 						Net_Bought[9] = True;
 						Net_Bought[10] = False;
-						Net_ShopBill += ShopPrices[10];
+						Net_Cash -= ShopPrices[10];
 					}	
 					if(Event.ControlId == "B_buy11")
 					{
 						Net_Bought[10] = True;
 						Net_Bought[9] = True;
-						Net_ShopBill += ShopPrices[11];
+						Net_Cash -= ShopPrices[11];
 					}	
 				}
 			}
@@ -1179,8 +717,8 @@ main()
 	<quad posn="0 -5 0" sizen="220 154" image="{{{C_ImgModeDir}}}/bigboard-center.dds" halign="center" valign="center"/>
 	<label posn="0 56 1" sizen="50 11" textid="shop" halign="center" valign="top" style="TextButtonNav" textsize="8"/>
 	<label posn="0 37 1" sizen="57 9" text="0$9f0 $$" textsize="7" style="BgMainMenuTitleHeader" halign="center" valign="bottom" id="L_Cash"/>
-	<label posn="-102 50 1" sizen="40 5" text="{{{TextLib::Compose(_("|Imperative|Attack"))}}}: {{{Teams[_AttackingClan].ColorizedName}}}"/>
-	<label posn="-102 43 1" sizen="40 5" text="{{{TextLib::Compose(_("|Imperative|Defend"))}}}: {{{Teams[1-_AttackingClan].ColorizedName}}}"/>
+	<label posn="-102 50 1" sizen="50 5" text="{{{TextLib::Compose(_("|Imperative|Attack"))}}}: {{{Teams[_AttackingClan].ColorizedName}}}"/>
+	<label posn="-102 43 1" sizen="50 5" text="{{{TextLib::Compose(_("|Imperative|Defend"))}}}: {{{Teams[1-_AttackingClan].ColorizedName}}}"/>
 	<label posn="72 57 1" sizen="54 5" textid="rewards" textcolor="f90" halign="center" textsize="2"/>
 	<format textsize="2" scale="0.7"/>
 	<frame posn="30 52 1">
@@ -1210,77 +748,77 @@ main()
 		<quad posn="12 16 1" sizen="12 12" bgcolor="FFFA" image="{{{C_ImgModeDir}}}/IconWeaponBRocket.dds" halign="center" valign="center"/>
 		<label posn="34 20 0" sizen="29 6" textid="buy2" textsize="2" halign="center" valign="center2"/>
 		<label posn="20 17 1" text="Buy ({{{C_ShopPrices[2]}}}$$)" style="CardButtonSmallS" scriptevents="1" id="B_buy2"/>
-		<label posn="24 15 1" sizen="22 6" valign="center" text="$9f0Bought" hidden="1" id="L_buy2"/>
+		<label posn="23 15 1" sizen="22 6" valign="center" text="$9f0Bought" hidden="1" id="L_buy2"/>
 	</frame>
 	<frame posn="-103 -15 1" id="Frame_EPistol">
 		<quad posn="27 16 0" sizen="50 16" bgcolor="FFFA" style="EnergyBar" substyle="EnergyBar" halign="center" valign="center"/>
 		<quad posn="12 16 1" sizen="12 12" bgcolor="FFFA" image="{{{C_ImgModeDir}}}/IconWeaponElectricPistol.dds" halign="center" valign="center"/>
 		<label posn="34 20 0" sizen="29 6" textid="buy3" textsize="2" halign="center" valign="center2"/>
 		<label posn="20 17 1" text="Buy ({{{C_ShopPrices[3]}}}$$)" style="CardButtonSmallS" scriptevents="1" id="B_buy3"/>
-		<label posn="24 15 1" sizen="22 6" valign="center" text="$9f0Bought" hidden="1" id="L_buy3"/>
+		<label posn="23 14 1" sizen="22 6" valign="center" text="$9f0Bought" hidden="1" id="L_buy3"/>
 	</frame>
 	<frame posn="-103 -43 1" id="Frame_Stamina">
 		<quad posn="27 16 0" sizen="50 16" bgcolor="FFFA" style="EnergyBar" substyle="EnergyBar" halign="center" valign="center"/>
 		<quad posn="12 16 1" sizen="12 12" bgcolor="FFFA" image="{{{C_ImgModeDir}}}/IconActionRun.tga" halign="center" valign="center"/>
 		<label posn="34 20 0" sizen="29 6" textid="buy1" textsize="2" halign="center" valign="center2"/>
 		<label posn="20 17 1" text="Buy ({{{C_ShopPrices[1]}}}$$)" style="CardButtonSmallS" scriptevents="1" id="B_buy1"/>
-		<label posn="24 15 1" sizen="22 6" valign="center" text="$9f0Bought" hidden="1" id="L_buy1"/>
+		<label posn="23 14 1" sizen="22 6" valign="center" text="$9f0Bought" hidden="1" id="L_buy1"/>
 	</frame>
 	<frame posn="-103 -60 1" id="Frame_Shield">
 		<quad posn="27 16 0" sizen="50 16" bgcolor="FFFA" style="EnergyBar" substyle="EnergyBar" halign="center" valign="center"/>
 		<quad posn="12 16 1" sizen="12 12" bgcolor="FFFA" image="{{{C_ImgModeDir}}}/IconShield.dds" halign="center" valign="center"/>
 		<label posn="34 20 0" sizen="29 6" textid="buy10" textsize="2" halign="center" valign="center2"/>
 		<label posn="20 17 1" text="Buy ({{{C_ShopPrices[10]}}}$$)" style="CardButtonSmallS" scriptevents="1" id="B_buy10"/>
-		<label posn="24 15 1" sizen="22 6" valign="center" text="$9f0Bought" hidden="1" id="L_buy10"/>
+		<label posn="23 14 1" sizen="22 6" valign="center" text="$9f0Bought" hidden="1" id="L_buy10"/>
 	</frame>
 	<frame posn="-103 -77 1" id="Frame_Shields">
 		<quad posn="27 16 0" sizen="50 16" bgcolor="FFFA" style="EnergyBar" substyle="EnergyBar" halign="center" valign="center"/>
 		<quad posn="12 16 1" sizen="12 12" bgcolor="FFFA" image="{{{C_ImgModeDir}}}/IconShield.dds" halign="center" valign="center"/>
 		<label posn="34 20 0" sizen="29 6" textid="buy11" textsize="2" halign="center" valign="center2"/>
 		<label posn="20 17 1" text="Buy ({{{C_ShopPrices[11]}}}$$)" style="CardButtonSmallS" scriptevents="1" id="B_buy11"/>
-		<label posn="24 15 1" sizen="22 6" valign="center" text="$9f0Bought" hidden="1" id="L_buy11"/>
+		<label posn="23 14 1" sizen="22 6" valign="center" text="$9f0Bought" hidden="1" id="L_buy11"/>
 	</frame>
 	<frame posn="-35 -5 1" id="Frame_PlasmaGun">
 		<quad posn="27 16 0" sizen="50 16" bgcolor="FFFA" style="EnergyBar" substyle="EnergyBar" halign="center" valign="center"/>
 		<quad posn="12 16 1" sizen="12 12" bgcolor="FFFA" image="{{{C_ImgModeDir}}}/IconWeaponPlasmaGun.dds" halign="center" valign="center"/>
 		<label posn="34 20 0" sizen="29 6" textid="buy4" textsize="2" halign="center" valign="center2"/>
 		<label posn="20 17 1" text="Buy ({{{C_ShopPrices[4]}}}$$)" style="CardButtonSmallS" scriptevents="1" id="B_buy4"/>
-		<label posn="24 15 1" sizen="22 6" valign="center" text="$9f0Bought" hidden="1" id="L_buy4"/>
+		<label posn="23 14 1" sizen="22 6" valign="center" text="$9f0Bought" hidden="1" id="L_buy4"/>
 	</frame>
 	<frame posn="-35 -25 1" id="Frame_Shotgun">
 		<quad posn="27 16 0" sizen="50 16" bgcolor="FFFA" style="EnergyBar" substyle="EnergyBar" halign="center" valign="center"/>
 		<quad posn="12 16 1" sizen="12 12" bgcolor="FFFA" image="{{{C_ImgModeDir}}}/IconWeaponShotgun.dds" halign="center" valign="center"/>
 		<label posn="34 20 0" sizen="29 6" textid="buy5" textsize="2" halign="center" valign="center2"/>
 		<label posn="20 17 1" text="Buy ({{{C_ShopPrices[5]}}}$$)" style="CardButtonSmallS" scriptevents="1" id="B_buy5"/>
-		<label posn="24 15 1" sizen="22 6" valign="center" text="$9f0Bought" hidden="1" id="L_buy5"/>
+		<label posn="23 14 1" sizen="22 6" valign="center" text="$9f0Bought" hidden="1" id="L_buy5"/>
 	</frame>
 	<frame posn="-35 -45 1" id="Frame_Laser">
 		<quad posn="27 16 0" sizen="50 16" bgcolor="FFFA" style="EnergyBar" substyle="EnergyBar" halign="center" valign="center"/>
 		<quad posn="12 16 1" sizen="12 12" bgcolor="FFFA" image="{{{C_ImgModeDir}}}/IconWeaponLaser.dds" halign="center" valign="center"/>
 		<label posn="34 20 0" sizen="29 6" textid="buy6" textsize="2" halign="center" valign="center2"/>
 		<label posn="20 17 1" text="Buy ({{{C_ShopPrices[6]}}}$$)" style="CardButtonSmallS" scriptevents="1" id="B_buy6"/>
-		<label posn="24 15 1" sizen="22 6" valign="center" text="$9f0Bought" hidden="1" id="L_buy6"/>
+		<label posn="23 14 1" sizen="22 6" valign="center" text="$9f0Bought" hidden="1" id="L_buy6"/>
 	</frame>
 	<frame posn="30 -5 1" id="Frame_Nucleus">
 		<quad posn="27 16 0" sizen="50 16" bgcolor="FFFA" style="EnergyBar" substyle="EnergyBar" halign="center" valign="center"/>
 		<quad posn="12 16 1" sizen="12 12" bgcolor="FFFA" image="{{{C_ImgModeDir}}}/IconWeaponNucleus.dds" halign="center" valign="center"/>
 		<label posn="34 20 0" sizen="29 6" textid="buy7" textsize="2" halign="center" valign="center2"/>
 		<label posn="20 17 1" text="Buy ({{{C_ShopPrices[7]}}}$$)" style="CardButtonSmallS" scriptevents="1" id="B_buy7"/>
-		<label posn="24 15 1" sizen="22 6" valign="center" text="$9f0Bought" hidden="1" id="L_buy7"/>
+		<label posn="23 14 1" sizen="22 6" valign="center" text="$9f0Bought" hidden="1" id="L_buy7"/>
 	</frame>
 	<frame posn="30 -25 1" id="Frame_BlowBomb">
 		<quad posn="27 16 0" sizen="50 16" bgcolor="FFFA" style="EnergyBar" substyle="EnergyBar" halign="center" valign="center"/>
 		<quad posn="12 16 1" sizen="12 12" bgcolor="FFFA" image="{{{C_ImgModeDir}}}/IconWeaponBlowBomb.dds" halign="center" valign="center"/>
 		<label posn="34 20 0" sizen="29 6" textid="buy8" textsize="2" halign="center" valign="center2"/>
 		<label posn="20 17 1" text="Buy ({{{C_ShopPrices[8]}}}$$)" style="CardButtonSmallS" scriptevents="1" id="B_buy8"/>
-		<label posn="24 15 1" sizen="22 6" valign="center" text="$9f0Bought" hidden="1" id="L_buy8"/>
+		<label posn="23 14 1" sizen="22 6" valign="center" text="$9f0Bought" hidden="1" id="L_buy8"/>
 	</frame>
 	<frame posn="30 -45 1" id="Frame_Grenades">
 		<quad posn="27 16 0" sizen="50 16" bgcolor="FFFA" style="EnergyBar" substyle="EnergyBar" halign="center" valign="center"/>
 		<quad posn="12 16 1" sizen="12 12" bgcolor="FFFA" image="{{{C_ImgModeDir}}}/IconWeaponGrenades.dds" halign="center" valign="center"/>
 		<label posn="34 20 0" sizen="29 6" textid="buy9" textsize="2" halign="center" valign="center2"/>
 		<label posn="20 17 1" text="Buy ({{{C_ShopPrices[9]}}}$$)" style="CardButtonSmallS" scriptevents="1" id="B_buy9"/>
-		<label posn="24 15 1" sizen="22 6" valign="center" text="$9f0Bought" hidden="1" id="L_buy9"/>
+		<label posn="23 14 1" sizen="22 6" valign="center" text="$9f0Bought" hidden="1" id="L_buy9"/>
 	</frame>
 	<label posn="-46 -45 0" sizen="148 5" textid="rule1" style="TextButtonNav"/>
 	<label posn="-46 -51 0" sizen="148 5" textid="rule2" style="TextButtonNav"/>
@@ -1294,7 +832,7 @@ main()
 
 Void SC_EnableBuyZone(Integer _TimeToChoose, Integer _Attackers)
 {
-	foreach(Spectator in Spectators) Layers::Detach("Shop", Spectator);
+	//foreach(Spectator in Spectators) Layers::Detach("Shop", Spectator);
 	declare Boolean CountdownPlayed = False;
 	declare PreRoundEndTime = Now + _TimeToChoose;
 	UIManager.UIAll.CountdownEndTime = PreRoundEndTime;
@@ -1303,15 +841,15 @@ Void SC_EnableBuyZone(Integer _TimeToChoose, Integer _Attackers)
 	{
 		declare UI <=> UIManager.GetUI(Player);
 		if (UI == Null) continue;
-		declare netwrite Net_ShopBill for UI = 0;
-		Net_ShopBill = 0;
 		if(Layers::IsMissing("Shop", Player)) Layers::Attach("Shop", Player);
+		/*declare netwrite Net_ServerWantReset for UI = 0;
+		Net_ServerWantReset = 0;*/
 	}	
 
 	while (PreRoundEndTime > Now && !ServerShutdownRequested && !MatchEndRequested) 
 	{
 		MB_Sleep(500);
-
+		
 		if(PreRoundEndTime-1000 < Now && !CountdownPlayed)
 		{
 			Sound::PlaySound("file://Media/Sounds/FireFight/countdown.ogg", -5., 0);
@@ -1323,7 +861,9 @@ Void SC_EnableBuyZone(Integer _TimeToChoose, Integer _Attackers)
 			declare UI <=> UIManager.GetUI(Player);
 			if (UI == Null) continue;
 			// If the player changed clan during buying
-			if (Player.RequestedClan != Player.CurrentClan) SetPlayerClan(Player, Player.RequestedClan);
+			if(Layers::IsMissing("Shop", Player)) Layers::Attach("Shop", Player);
+			
+			if(Player.RequestedClan != Player.CurrentClan) SetPlayerClan(Player, Player.RequestedClan);
 			if(Player.RequestsSpectate) Layers::Detach("Shop", Player);
 		}
 	}	
@@ -1334,9 +874,10 @@ Void SC_EnableBuyZone(Integer _TimeToChoose, Integer _Attackers)
 		if (UI == Null) continue;
 		declare netwrite Integer[Text] Net_SecondaryWeapons for UI;
 		Net_SecondaryWeapons = G_SecondaryWeapons;
-		declare netwrite Net_Cash for UI = S_StartCash;
-		declare netread Net_ShopBill for UI = S_StartCash;
-		Net_Cash -= Net_ShopBill;
+		declare netwrite Net_ServerWantReset for UI = False;
+		Net_ServerWantReset = False;
+		declare netwrite Net_RoundRewards for UI = 0;
+		Net_RoundRewards = 0;
 		Layers::Detach("Shop", Player);
 	}
 	Layers::Show("Players");
@@ -1352,6 +893,8 @@ Void SC_AddPlayerEQ(CSmPlayer _Player)
 	declare netread Net_Bought for UI = [False, False, False, False, False, False, False, False, False, False, False];
 	declare netread Net_SecWpn for UI = 0;
 	declare netread Net_PrimWpn for UI = 0;
+	declare netwrite Net_ServerWantReset for UI = False;
+	Net_ServerWantReset = False;
 	declare PrimaryWeapon for _Player = 0;
 	declare SecondaryWeapon for _Player = 1;
 	//Stamina
@@ -1375,8 +918,8 @@ Void SC_AddPlayerEQ(CSmPlayer _Player)
 	}
 	else if(Net_Bought[C_BoughtJuggernautSuit])
 	{
-		_Player.ArmorMax = 600;
-		_Player.Armor = 600;
+		_Player.ArmorMax = 500;
+		_Player.Armor = 500;
 	}
 	else
 	{
@@ -1384,11 +927,13 @@ Void SC_AddPlayerEQ(CSmPlayer _Player)
 		_Player.Armor = 300;
 	}
 
+	ActionLoad(_Player, CSmMode::EActionSlot::Slot_A, NullId);
+	ActionLoad(_Player, CSmMode::EActionSlot::Slot_B, NullId);
+
 	switch(Net_SecWpn)
 	{
 		case 1:
 		{
-			ActionLoad(_Player, CSmMode::EActionSlot::Slot_B, NullId);
 			ActionLoad(_Player, CSmMode::EActionSlot::Slot_B, G_CustomBounceRocket);
    			ActionBind(_Player, CSmMode::EActionSlot::Slot_B, CSmMode::EActionInput::Weapon);
 			_Player.AmmoGain = 0.85;
@@ -1396,7 +941,6 @@ Void SC_AddPlayerEQ(CSmPlayer _Player)
 		}
 		case 2:
 		{
-			ActionLoad(_Player, CSmMode::EActionSlot::Slot_B, NullId);
 			ActionLoad(_Player, CSmMode::EActionSlot::Slot_B, G_CustomElectricPistol);
     		ActionBind(_Player, CSmMode::EActionSlot::Slot_B, CSmMode::EActionInput::Weapon);
 			_Player.AmmoGain = 1.0;
@@ -1417,14 +961,12 @@ Void SC_AddPlayerEQ(CSmPlayer _Player)
 	{
 		case 3:
 		{
-			ActionLoad(_Player, CSmMode::EActionSlot::Slot_A, NullId);
 			ActionLoad(_Player, CSmMode::EActionSlot::Slot_A, G_CustomPlasmaGun);
 			_Player.AmmoGain = 0.6;
 			PrimaryWeapon = 2;
 		}
 		case 4:
 		{
-			ActionLoad(_Player, CSmMode::EActionSlot::Slot_A, NullId);
 			ActionLoad(_Player, CSmMode::EActionSlot::Slot_A, G_CustomShotgun);
 			_Player.AmmoGain = 0.6;
 			PrimaryWeapon = 5;
@@ -1449,14 +991,12 @@ Void SC_AddPlayerEQ(CSmPlayer _Player)
 		}
 		case 7:
 		{
-			ActionLoad(_Player, CSmMode::EActionSlot::Slot_A, NullId);
 			ActionLoad(_Player, CSmMode::EActionSlot::Slot_A, G_CustomBlowBomb);
 			_Player.AmmoGain = 1.;
 			PrimaryWeapon = 6;	
 		}
 		case 8:
 		{
-			ActionLoad(_Player, CSmMode::EActionSlot::Slot_A, NullId);
 			ActionLoad(_Player, CSmMode::EActionSlot::Slot_A, G_CustomGrenades);
 			_Player.AmmoGain = 0.5;
 			PrimaryWeapon = 3;
@@ -1498,9 +1038,8 @@ Void SC_CycleWeapon(CSmPlayer _Player, Integer _Step)
 				{
 					case 1:
 					{
-						SetPlayerAmmoMax(_Player, CSmMode::EWeapon::Rocket, 4);
+						SetPlayerAmmoMax(_Player, CSmMode::EWeapon::Rocket, C_RocketsAmmo);
 						SetPlayerWeapon(_Player, CSmMode::EWeapon::Rocket, False);
-						//ActionLoad(_Player, CSmMode::EActionSlot::Slot_A, NullId);
 						ActionBind(_Player, CSmMode::EActionSlot::Slot_A, CSmMode::EActionInput::None);
 						ActionBind(_Player, CSmMode::EActionSlot::Slot_B, CSmMode::EActionInput::None);
 						_Player.AmmoGain = 0.95;
@@ -1508,8 +1047,6 @@ Void SC_CycleWeapon(CSmPlayer _Player, Integer _Step)
 					case 2:
 					{
 						SetPlayerAmmoMax(_Player, CSmMode::EWeapon::Rocket, 0);
-						//ActionLoad(_Player, CSmMode::EActionSlot::Slot_A, NullId);
-						//ActionLoad(_Player, CSmMode::EActionSlot::Slot_B, G_CustomBounceRocket);
 						ActionBind(_Player, CSmMode::EActionSlot::Slot_A, CSmMode::EActionInput::None);
 						ActionBind(_Player, CSmMode::EActionSlot::Slot_B, CSmMode::EActionInput::Weapon);
 						_Player.AmmoGain = 0.85;
@@ -1517,8 +1054,6 @@ Void SC_CycleWeapon(CSmPlayer _Player, Integer _Step)
 					case 3:
 					{
 						SetPlayerAmmoMax(_Player, CSmMode::EWeapon::Rocket, 0);
-						//ActionLoad(_Player, CSmMode::EActionSlot::Slot_A, NullId);
-						//ActionLoad(_Player, CSmMode::EActionSlot::Slot_B, G_CustomElectricPistol);
 						ActionBind(_Player, CSmMode::EActionSlot::Slot_A, CSmMode::EActionInput::None);
 						ActionBind(_Player, CSmMode::EActionSlot::Slot_B, CSmMode::EActionInput::Weapon);
 						_Player.AmmoGain = 1.;
@@ -1546,6 +1081,7 @@ Void SC_CycleWeapon(CSmPlayer _Player, Integer _Step)
 						SetPlayerAmmoMax(_Player, CSmMode::EWeapon::Nucleus, 0);
 						SetPlayerAmmoMax(_Player, CSmMode::EWeapon::Arrow, 0);
 						//ActionLoad(_Player, CSmMode::EActionSlot::Slot_A, G_CustomPlasmaGun);
+						ActionBind(_Player, CSmMode::EActionSlot::Slot_B, CSmMode::EActionInput::None);
 						ActionBind(_Player, CSmMode::EActionSlot::Slot_A, CSmMode::EActionInput::Weapon);
 						_Player.AmmoGain = 0.6;
 					}
@@ -1555,6 +1091,7 @@ Void SC_CycleWeapon(CSmPlayer _Player, Integer _Step)
 						SetPlayerAmmoMax(_Player, CSmMode::EWeapon::Nucleus, 0);
 						SetPlayerAmmoMax(_Player, CSmMode::EWeapon::Arrow, 0);
 						//ActionLoad(_Player, CSmMode::EActionSlot::Slot_A, G_CustomGrenades);
+						ActionBind(_Player, CSmMode::EActionSlot::Slot_B, CSmMode::EActionInput::None);
 						ActionBind(_Player, CSmMode::EActionSlot::Slot_A, CSmMode::EActionInput::Weapon);
 						_Player.AmmoGain = 0.5;
 					}	
@@ -1573,6 +1110,7 @@ Void SC_CycleWeapon(CSmPlayer _Player, Integer _Step)
 						SetPlayerAmmoMax(_Player, CSmMode::EWeapon::Nucleus, 0);
 						SetPlayerAmmoMax(_Player, CSmMode::EWeapon::Arrow, 0);
 						//ActionLoad(_Player, CSmMode::EActionSlot::Slot_A, G_CustomShotgun);
+						ActionBind(_Player, CSmMode::EActionSlot::Slot_B, CSmMode::EActionInput::None);
 						ActionBind(_Player, CSmMode::EActionSlot::Slot_A, CSmMode::EActionInput::Weapon);
 						_Player.AmmoGain = 0.6;
 					}
@@ -1582,6 +1120,7 @@ Void SC_CycleWeapon(CSmPlayer _Player, Integer _Step)
 						SetPlayerAmmoMax(_Player, CSmMode::EWeapon::Nucleus, 0);
 						SetPlayerAmmoMax(_Player, CSmMode::EWeapon::Arrow, 0);
 						//ActionLoad(_Player, CSmMode::EActionSlot::Slot_A, G_CustomBlowBomb);
+						ActionBind(_Player, CSmMode::EActionSlot::Slot_B, CSmMode::EActionInput::None);
 						ActionBind(_Player, CSmMode::EActionSlot::Slot_A, CSmMode::EActionInput::Weapon);
 						_Player.AmmoGain = 1.;
 					}	
@@ -1620,6 +1159,7 @@ Void SC_SwitchWeapon(CSmPlayer _Player, CSmModeEvent::EActionInput _Input) {
 					SetPlayerAmmoMax(_Player, CSmMode::EWeapon::Nucleus, 0);
 					SetPlayerAmmoMax(_Player, CSmMode::EWeapon::Arrow, 0);
 					//ActionLoad(_Player, CSmMode::EActionSlot::Slot_A, G_CustomPlasmaGun);
+					ActionBind(_Player, CSmMode::EActionSlot::Slot_B, CSmMode::EActionInput::None);
 					ActionBind(_Player, CSmMode::EActionSlot::Slot_A, CSmMode::EActionInput::Weapon);
 					_Player.AmmoGain = 0.6;
 				}
@@ -1629,6 +1169,7 @@ Void SC_SwitchWeapon(CSmPlayer _Player, CSmModeEvent::EActionInput _Input) {
 					SetPlayerAmmoMax(_Player, CSmMode::EWeapon::Nucleus, 0);
 					SetPlayerAmmoMax(_Player, CSmMode::EWeapon::Arrow, 0);
 					//ActionLoad(_Player, CSmMode::EActionSlot::Slot_A, G_CustomGrenades);
+					ActionBind(_Player, CSmMode::EActionSlot::Slot_B, CSmMode::EActionInput::None);
 					ActionBind(_Player, CSmMode::EActionSlot::Slot_A, CSmMode::EActionInput::Weapon);
 					_Player.AmmoGain = 0.5;
 				}
@@ -1647,6 +1188,7 @@ Void SC_SwitchWeapon(CSmPlayer _Player, CSmModeEvent::EActionInput _Input) {
 					SetPlayerAmmoMax(_Player, CSmMode::EWeapon::Nucleus, 0);
 					SetPlayerAmmoMax(_Player, CSmMode::EWeapon::Arrow, 0);
 					//ActionLoad(_Player, CSmMode::EActionSlot::Slot_A, G_CustomShotgun);
+					ActionBind(_Player, CSmMode::EActionSlot::Slot_B, CSmMode::EActionInput::None);
 					ActionBind(_Player, CSmMode::EActionSlot::Slot_A, CSmMode::EActionInput::Weapon);
 					_Player.AmmoGain = 0.6;
 				}
@@ -1656,6 +1198,7 @@ Void SC_SwitchWeapon(CSmPlayer _Player, CSmModeEvent::EActionInput _Input) {
 					SetPlayerAmmoMax(_Player, CSmMode::EWeapon::Nucleus, 0);
 					SetPlayerAmmoMax(_Player, CSmMode::EWeapon::Arrow, 0);
 					//ActionLoad(_Player, CSmMode::EActionSlot::Slot_A, G_CustomBlowBomb);
+					ActionBind(_Player, CSmMode::EActionSlot::Slot_B, CSmMode::EActionInput::None);
 					ActionBind(_Player, CSmMode::EActionSlot::Slot_A, CSmMode::EActionInput::Weapon);
 					_Player.AmmoGain = 1.;
 				}
@@ -1704,9 +1247,6 @@ Void SC_SwitchWeapon(CSmPlayer _Player, CSmModeEvent::EActionInput _Input) {
 				{
 					SetPlayerAmmoMax(_Player, CSmMode::EWeapon::Rocket, C_RocketsAmmo);
 					SetPlayerWeapon(_Player, CSmMode::EWeapon::Rocket, False);
-					//SetPlayerAmmo(_Player, CSmMode::EWeapon::Laser, 0);
-					//SetPlayerAmmo(_Player, CSmMode::EWeapon::Nucleus, 0);
-					//ActionLoad(_Player, CSmMode::EActionSlot::Slot_A, NullId);
 					ActionBind(_Player, CSmMode::EActionSlot::Slot_A, CSmMode::EActionInput::None);
 					ActionBind(_Player, CSmMode::EActionSlot::Slot_B, CSmMode::EActionInput::None);
 					_Player.AmmoGain = 0.95;
@@ -1714,10 +1254,7 @@ Void SC_SwitchWeapon(CSmPlayer _Player, CSmModeEvent::EActionInput _Input) {
 				case 2:
 				{
 					SetPlayerAmmoMax(_Player, CSmMode::EWeapon::Rocket, 0);
-					//SetPlayerAmmo(_Player, CSmMode::EWeapon::Laser, 0);
-					//SetPlayerAmmo(_Player, CSmMode::EWeapon::Nucleus, 0);
 					SetPlayerWeapon(_Player, CSmMode::EWeapon::Rocket, False);
-					//ActionLoad(_Player, CSmMode::EActionSlot::Slot_A, NullId);
 					//ActionLoad(_Player, CSmMode::EActionSlot::Slot_B, G_CustomBounceRocket);
 					ActionBind(_Player, CSmMode::EActionSlot::Slot_A, CSmMode::EActionInput::None);
 					ActionBind(_Player, CSmMode::EActionSlot::Slot_B, CSmMode::EActionInput::Weapon);
@@ -1726,11 +1263,7 @@ Void SC_SwitchWeapon(CSmPlayer _Player, CSmModeEvent::EActionInput _Input) {
 				case 3:
 				{
 					SetPlayerAmmoMax(_Player, CSmMode::EWeapon::Rocket, 0);
-					//SetPlayerAmmo(_Player, CSmMode::EWeapon::Laser, 0);
-					//SetPlayerAmmo(_Player, CSmMode::EWeapon::Nucleus, 0);
 					SetPlayerWeapon(_Player, CSmMode::EWeapon::Rocket, False);
-					//ActionLoad(_Player, CSmMode::EActionSlot::Slot_A, NullId);
-					//ActionLoad(_Player, CSmMode::EActionSlot::Slot_B, G_CustomElectricPistol);
 					ActionBind(_Player, CSmMode::EActionSlot::Slot_A, CSmMode::EActionInput::None);
 					ActionBind(_Player, CSmMode::EActionSlot::Slot_B, CSmMode::EActionInput::Weapon);
 					_Player.AmmoGain = 1.;
@@ -1745,13 +1278,15 @@ Integer SC_DoTheToss(Integer _ForceTossWinner)
 {
 	declare Integer VoteWinner;
 	declare Integer Result;
+	declare Integer Attackers;
 	UIManager.UIAll.UISequence_CanSkipIntroMT = False;
 	UIManager.UIAll.UISequence = CUIConfig::EUISequence::RollingBackgroundIntro;
 	if(_ForceTossWinner < 1) VoteWinner = Toss::Toss();
 	else VoteWinner = _ForceTossWinner;
 	Result = Toss::SelectSide(VoteWinner);
-
-	return 3-Result;
+	if(Result == 1) Attackers = VoteWinner;
+	else Attackers = 3-VoteWinner;
+	return Attackers;
 }
 
 Void SC_UpdateHeader(Integer _Clan1Points, Integer _Clan2Points) 
@@ -1774,12 +1309,6 @@ Void SC_UpdateHeader(Integer _Clan1Points, Integer _Clan2Points)
 	//UIManager.UIAll.ScoreSummary_MatchPoints1	= ClanScores[1];
 	UIManager.UIAll.ScoreSummary_Points2		= _Clan2Points;
 	//UIManager.UIAll.ScoreSummary_MatchPoints2	= ClanScores[2];
-}
-
-Void SC_UpdateSTFooter(Integer _PointLimit, Integer _Clan1Score, Integer _Clan2Score, Integer _Attackers)
-{
-	ST2::SetFooterText(TextLib::Compose(_("Round: %1 | Points to win: %2 | Attacking: %3"), TextLib::ToText(MB_SectionRoundNb), TextLib::ToText(_PointLimit), Teams[_Attackers-1].ColorizedName));
-	ModeStatusMessage = TextLib::Compose(_("Round %1 | Score: %2:%3\nStarting Cash: %4"), TextLib::ToText(MB_SectionRoundNb), TextLib::ToText(_Clan1Score), TextLib::ToText(_Clan1Score), TextLib::ToText(S_StartCash));
 }
 
 Void SC_WaitForPlayers() 
@@ -1842,8 +1371,13 @@ Void SC_WaitForPlayers()
 	
 	SM::UnspawnAllPlayers();
 	StartTime = -1;
-	UIManager.UIAll.BigMessage = "";
-	UIManager.UIAll.StatusMessage = "";
+	foreach (Player in Players)
+	{
+		declare UI <=> UIManager.GetUI(Player);
+		if (UI == Null) continue;
+		UI.BigMessage = "";
+		UI.StatusMessage = "";
+	}
 	UIManager.UIAll.UISequence = CUIConfig::EUISequence::EndRound;
 	MB_CurrentSection = "StartRound";
 	
@@ -1866,8 +1400,8 @@ Void SC_AnnounceHitDistance(Real _Distance, CSmPlayer _Player)
 	declare UI <=> UIManager.GetUI(_Player);
 	if(UI == Null) return;
 	declare Distance = MathLib::NearestInteger(_Distance * 10) / 10.0;
-	Message::SendStatusMessage(_Player, TextLib::Compose(_("%1m hit!"), TextLib::ToText(Distance)), 2500, 1);
-	UI.SendNotice(TextLib::Compose(_("%1m hit!"), TextLib::ToText(Distance)), CUIConfig::ENoticeLevel::Default, Null, CUIConfig::EAvatarVariant::Default, CUIConfig::EUISound::Silence, 0);
+	//Message::SendStatusMessage(_Player, TextLib::Compose(_("%1m hit!"), TextLib::ToText(Distance)), 2500, 1);
+	UI.SendNotice(TextLib::Compose(_("%1m hit from laser!"), TextLib::ToText(Distance)), CUIConfig::ENoticeLevel::Default, Null, CUIConfig::EAvatarVariant::Default, CUIConfig::EUISound::Silence, 0);
 }
 
 Void SC_AnnounceRoundWin(Integer _Winner)
@@ -2039,7 +1573,7 @@ Text Private_UpdateLayerPlayers()
 </framemodel>""";
 	
 	
-	for (I, 0, 15) {
+	for (I, 0, 11) {
 		Panels[1] ^= """<frameinstance posn="0 {{{-I*4.3}}}" modelid="Framemodel_ArmorsLeft" id="Frame_PlayerArmors_{{{I+1}}}" />""";
 		Panels[2] ^= """<frameinstance posn="0 {{{-I*4.3}}}" modelid="Framemodel_ArmorsRight" id="Frame_PlayerArmors_{{{I+1}}}" />""";
 	}
@@ -2168,12 +1702,8 @@ Void UpdatePlayersList() {
 			if (Frame_PlayerArmors != Null && Frame_PlayerArmors.Visible) Frame_PlayerArmors.Visible = False;
 		}
 		
-		if (TotalArmors[ClanNb] > 0) {
-			if (!Labels_ArmorsLeft[ClanNb].Visible) Labels_ArmorsLeft[ClanNb].Visible = True;
-			Labels_ArmorsLeft[ClanNb].Value = TL::ToText(TotalArmors[ClanNb]);
-		} else {
-			if (Labels_ArmorsLeft[ClanNb].Visible) Labels_ArmorsLeft[ClanNb].Visible = False;
-		}
+		if (!Labels_ArmorsLeft[ClanNb].Visible) Labels_ArmorsLeft[ClanNb].Visible = True;
+		Labels_ArmorsLeft[ClanNb].Value = TL::ToText(TotalArmors[ClanNb]);
 	}
 	
 }

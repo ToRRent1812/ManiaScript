@@ -2,11 +2,12 @@
 #Extends "Modes/Shootmania/ShopCore.Script.txt"
 
 #Const CompatibleMapTypes	"OverloadArena"
-#Const Version				"2014-09-21"
+#Const Version				"2014-10-08"
 #Const ScriptName			"Overload.Script.txt"
 
 #Include "MathLib" as MathLib
 #Include "TextLib" as TextLib
+#Include "Libs/ST.Script.txt" as ST
 #Include "Libs/Nadeo/Victory.Script.txt" as Victory
 #Include "Libs/Nadeo/CustomUI.Script.txt" as CustomUI
 #Include "Libs/Nadeo/ShootMania/SM.Script.txt" as SM
@@ -16,15 +17,16 @@
 
 #Setting S_RoundTime			105		as _("Round time in seconds")
 #Setting S_PoleCaptureDuration	5		as _("Hacking time in seconds")
-#Setting S_MapPointsLimit		9		as _("Number of points to win the map")
-#Setting S_BlueBot 				0 		as _("Number of blue test bots")
-#Setting S_RedBot 				0 		as _("Number of red test bots")	
+
 // Clublinks settings
 #Setting S_UsePlayerClublinks	False	as _("Use players clublinks")	// Use the players clublinks, or otherwise use the default teams
 #Setting S_ForceClublinkTeam1	""		as "<hidden>"	// Force the Clublink of team 1 (format: http://www.example.com/MyTeam.Club.xml)
 #Setting S_ForceClublinkTeam2	""		as "<hidden>"	// Force the Clublink of team 2 (format: http://www.example.com/MyTeam.Club.xml)
 
-#Const Description  _("RULES: Locate vulnerable point and do overload to win the round.")
+#Const Description  _("RULES: Locate vulnerable point and do the overload to win the round.")
+
+#Const C_BlueBot 				0
+#Const C_RedBot 				0
 
 declare Integer[Integer]			G_ClansMapPoints;		// Number of points cumulated on one map for each clan
 declare Integer[Integer]			G_PlayersAlive;			// How many players are alive in specific team
@@ -39,8 +41,6 @@ declare Integer 					G_RoundTime;
 declare Integer 					G_PoleCaptureDuration;
 declare Integer 					G_MapPointsLimit;
 declare Integer 					G_BuyTime;
-declare Integer 					G_BlueBot;
-declare Integer 					G_RedBot;
 
 ***LogVersion***
 ***
@@ -52,6 +52,9 @@ MB_LogVersion(Score::GetScriptName(), Score::GetScriptVersion());
 MB_LogVersion(Layers::GetScriptName(), Layers::GetScriptVersion());
 MB_LogVersion(Message::GetScriptName(), Message::GetScriptVersion());
 MB_LogVersion(SpawnScreen::GetScriptName(), SpawnScreen::GetScriptVersion());
+MB_LogVersion(Rank::GetScriptName(), Rank::GetScriptVersion());
+MB_LogVersion(ST::GetScriptName(), ST::GetScriptVersion());
+MB_LogVersion(Toss::GetScriptName(), Toss::GetScriptVersion());
 ***
 
 ***InitServer***
@@ -72,7 +75,7 @@ UsePlayerTagging 	= True;
 if(S_RoundTime < 30) G_RoundTime = 30;
 else G_RoundTime = S_RoundTime;
 
-if(S_PoleCaptureDuration < 1) G_PoleCaptureDuration = 1;
+if(S_PoleCaptureDuration < 2) G_PoleCaptureDuration = 2;
 else G_PoleCaptureDuration = S_PoleCaptureDuration;
 
 if(S_MapPointsLimit < 1) G_MapPointsLimit = 1;
@@ -81,21 +84,15 @@ else G_MapPointsLimit = S_MapPointsLimit;
 if(S_BuyTime < 10) G_BuyTime = 10;
 else G_BuyTime = S_BuyTime;
 
-if(S_BlueBot <= 0) G_BlueBot = 0;
-else G_BlueBot = S_BlueBot;
-
-if(S_RedBot < 0) G_RedBot = 0;
-else G_RedBot = S_RedBot;
-
 declare ModeName = "Overload";
-declare ModeObjectives = TextLib::Compose(_("$<%1Access points: $>There are 3 access points, only one is vulnerable.\n$<%1Attackers: $>Find vulnerable access point and hack to win the round.\n$<%1Defenders: $>Protect vulnerable point by %2 sec. or eliminate attackers to win the round"), "$"^SpawnScreen::GetModeColor(), TextLib::ToText(S_RoundTime));
+declare ModeObjectives = TextLib::Compose(_("$<%1Access points: $>There are 3 Access points, only one is vulnerable.\n$<%1Attackers: $>Find vulnerable Access point and hack to win the round.\n$<%1Defenders: $>Protect vulnerable point by %2 sec. or eliminate attackers to win the round"), "$"^SpawnScreen::GetModeColor(), TextLib::ToText(S_RoundTime));
 declare ModeConditions = TextLib::Compose(_("$<%11. $>A game is divided in rounds.\n$<%12. $>The first team with %2 points wins the map.\n$<%13. $>Before round you can buy equipment using money.\n$<%14. $>You can earn money by hit, headshot, kill, capture, win and loss."), "$"^SpawnScreen::GetModeColor(), TextLib::ToText(S_MapPointsLimit+1));
 
 SpawnScreen::AddSubsection(_("Type"), _("Team versus Team"), 0.);
 SpawnScreen::AddSubsection(_("Objectives"), ModeObjectives, 20.);
 SpawnScreen::AddSubsection(_("Conditions"), ModeConditions, 55.);
 SpawnScreen::CreatePrettyRules(ModeName);
-ModeStatusMessage = _("RULES: Locate vulnerable point and do overload to win the round.");
+ModeStatusMessage = _("RULES: Locate vulnerable point and do the overload to win the round.");
 SM::SetupDefaultVisibility();
 
 // Init movable elements
@@ -114,29 +111,6 @@ Layers::Create("RulesReminder", UpdateLayerRulesReminder());
 Layers::SetType("Markers", CUILayer::EUILayerType::Markers);
 Layers::SetType("RulesReminder", CUILayer::EUILayerType::CutScene);
 Layers::Attach("RulesReminder");
-
-// Init scores table
-ST2::SetStyle("LibST_SMBaseTeams");
-ST2::SetStyle("LibST_SMBasePoints");
-ST2::SetStyle("LibST_SMWithLegends");
-ST2::SetSize(<197., -1.>, <190., -1.>, <190., -1.>);
-ST2::SetBackgroundImage("file://Media/Manialinks/Shootmania/ScoresTable/bg-storm.dds", <0., 5.>, <240., 98.>);
-ST2::SetTeamImage(1, "file://Media/Manialinks/Shootmania/ScoresTable/teamversus-left.dds", <0., 3.8>, <120.0, 25.>);
-ST2::SetTeamImage(2, "file://Media/Manialinks/Shootmania/ScoresTable/teamversus-right.dds", <0., 3.8>, <120.0, 25.>);
-ST2::SetFormat(2, 6);
-MB_SetScoresTableStyleFromXml(S_ScoresTableStylePath);
-ST2::CreateCol("ST_Captured", _("Objectives"), "0", 4.5, 90.);
-ST2::CreateCol("ST_MVP", _("MVP"), "$fc0", 4.5, 95.);
-ST2::SetColTextAlign("ST_Captured", CMlControl::AlignHorizontal::HCenter);
-ST2::SetColTextAlign("ST_MVP", CMlControl::AlignHorizontal::HCenter);
-ST2::SetColTextAlign("LibST_SMPoints", CMlControl::AlignHorizontal::HCenter);
-ST2::SetColTextAlign("LibST_SMRoundPoints", CMlControl::AlignHorizontal::HCenter);
-ST2::SetColLegend("LibST_SMRoundPoints", _("Round"));
-ST2::SetColLegend("LibST_SMPoints", _("Score"));
-ST2::SetColWidth("LibST_Name", 20.);
-ST2::SetColWidth("LibST_SMRoundPoints", 4.5);
-ST2::SetColWidth("LibST_SMPoints", 6.);
-ST2::Build("SM");
 ***					
 
 ***WhenCaptured***
@@ -152,10 +126,9 @@ if(LandmarkGauge.Sector.PlayersIds.count > 0)
 			declare UI <=> UIManager.GetUI(Players[PlayerId]);
 			if(UI != Null)
 			{
-				declare netwrite Net_Cash for UI = S_StartCash;
-				Net_Cash += C_CashForCapture;
+				declare netwrite Net_RoundRewards for UI = 0;
+				Net_RoundRewards += C_CashForCapture;
 			}	
-			ST2::SetColValue("ST_Captured", Players[PlayerId].Score, "$1F1"^TextLib::ToText(CurrentCapGoals));
 			Score::AddPoints(Players[PlayerId], 5);	
 		}
 	}
@@ -167,7 +140,7 @@ foreach(Player in Players)
 	switch(Player.User.Language)
 	{
 		case "pl": MSG = TextLib::Compose(_("$<%1$> zhakowali punkt dostępu!"), Teams[G_AttackingClan-1].ColorizedName);
-		default: MSG = TextLib::Compose(_("$<%1$> hacked the access point!"), Teams[G_AttackingClan-1].ColorizedName);
+		default: MSG = TextLib::Compose(_("$<%1$> hacked the Access point!"), Teams[G_AttackingClan-1].ColorizedName);
 	} 
 	Message::SendBigMessage(Player, MSG, 3500, 0);
 }	
@@ -177,7 +150,7 @@ foreach(Spectator in Spectators)
 	switch(Spectator.User.Language)
 	{
 		case "pl": MSG = TextLib::Compose(_("$<%1$> zhakowali punkt dostępu!"), Teams[G_AttackingClan-1].ColorizedName);
-		default: MSG = TextLib::Compose(_("$<%1$> hacked the access point!"), Teams[G_AttackingClan-1].ColorizedName);
+		default: MSG = TextLib::Compose(_("$<%1$> hacked the Access point!"), Teams[G_AttackingClan-1].ColorizedName);
 	} 
 	Message::SendBigMessage(Spectator, MSG, 4000, 0);
 }
@@ -200,6 +173,10 @@ declare Integer		ClanMapWinner;		// Clan who win the map
 
 ***StartMap***
 ***
+// RANK
+Rank::Load();
+if(Rank::IsServerRanked(True)) ModeStatusMessage = _("RULES: Locate vulnerable point and do the overload to win the round.\nThis server is $f90RANKED");
+else ModeStatusMessage = _("RULES: Locate vulnerable point and do the overload to win the round.\nThis server is $f30UNRANKED");
 UIManager.UIAll.MarkersXML = "";
 UIManager.UIAll.ScreenIn3dHideVersus = False;
 UIManager.UIAll.ScreenIn3dHideScoreSummary = True;
@@ -207,17 +184,31 @@ G_ClansMapPoints	= [1 => 0, 2 => 0];
 G_Capturable 		= 0;
 G_AttackingClan 	= 1;
 ClanMapWinner		= 0;
-// reset custom scores table data
+// RANK
 foreach(Score in Scores)
 {
 	declare CurrentCapGoals for Score = 0;
 	CurrentCapGoals = 0;
 	declare CurrentMVP for Score = 0;
 	CurrentMVP = 0;
+	declare CurrentAcc for Score = 0;
+	CurrentAcc = 0;
+	declare StartAtRound for Score = 0;
+	StartAtRound = 0;
+	declare Laziness for Score = 0;
+	Laziness = 0;
+	declare Fired for Score = 0;
+	Fired = 0;
+	declare Hits for Score = 0;
+	Hits = 0;
+	declare CurrentKills for Score = 0;
+	CurrentKills = 0;
+	declare CurrentDeaths for Score = 0;
+	CurrentDeaths = 0;
+
 }
 // Init scores
 Score::MatchBegin();
-ST2::ClearScores();
 
 // Init players
 foreach (Player in Players)
@@ -225,11 +216,8 @@ foreach (Player in Players)
 	SetPlayerClan(Player, Player.RequestedClan);
 	declare UI <=> UIManager.GetUI(Player);
 	if(UI == Null) continue;
-	declare netwrite Net_Cash for UI = S_StartCash;
-	Net_Cash = S_StartCash;
-	declare netwrite Net_Bought for UI = [False, False, False, False, False, False, False, False, False, False, False];
-	Net_Bought = [False, False, False, False, False, False, False, False, False, False, False];
-	
+	declare netwrite Net_ServerWantReset for UI = False;
+	Net_ServerWantReset = True;
 }	
 
 // Update the players clublinks
@@ -240,12 +228,13 @@ Clublink::SyncUpdate();
 // Init UI
 SM::SetupDefaultVisibility();
 Message::CleanAllMessages();
+ST::Load();
 Clublink::Attach();
 Clublink::SetSponsorsDisplay(False);
 SC_UpdateHeader(G_ClansMapPoints[1], G_ClansMapPoints[2]);
 
 // Debug
-Users_SetNbFakeUsers(G_BlueBot, G_RedBot);
+Users_SetNbFakeUsers(C_BlueBot, C_RedBot);
 
 SM::UnspawnAllPlayers();
 SC_WaitForPlayers();
@@ -275,7 +264,6 @@ Mode::Synchro_DoBarrier();
 UIManager.UIAll.ScoreTableVisibility = CUIConfig::EVisibility::Normal;
 Victory::RoundBegin();
 Score::RoundBegin();
-UpdateFooter();
 InitGoals();
 UIManager.UIAll.MarkersXML = "";
 // If this is the first round on the map, launch players presentation and toss
@@ -286,6 +274,8 @@ if (MB_SectionRoundNb == 1)
 
 	MB_UseIntro = True;
 	G_AttackingClan = SC_DoTheToss(0);
+	ST::Build();
+	ST::UpdateST(1, MB_SectionRoundNb, G_MapPointsLimit, S_FinalRoundExceptDraw);
 }
 UIManager.UIAll.UISequence = CUIConfig::EUISequence::EndRound;
 UIManager.UIAll.UISequence_CanSkipIntroMT = True;
@@ -294,14 +284,6 @@ Mode::PlaySound(CUIConfig::EUISound::StartRound, 0);
 SC_UpdateHeader(G_ClansMapPoints[1], G_ClansMapPoints[2]);
 UpdateBasesColors();
 if(ServerShutdownRequested || MatchEndRequested) break;
-foreach (Player in AllPlayers) 
-{
-	declare UI <=> UIManager.GetUI(Player);
-	declare SpawnTicket for Player = 0;
-	declare netwrite Net_IsDead for UI = 0;
-	if(SpawnTicket < 1) Net_IsDead = 1;
-	else Net_IsDead = 0;
-}
 Layers::Update("CapturableInfo", UpdateLayerCapturable(G_Capturable));
 Layers::Attach("CapturableInfo");
 SC_EnableBuyZone(G_BuyTime*1000, G_AttackingClan);
@@ -310,13 +292,13 @@ Layers::Detach("CapturableInfo");
 // Init players and spawn ticket
 foreach (Player in AllPlayers) 
 {
-	declare UI <=> UIManager.GetUI(Player);
 	declare SpawnTicket for Player = 0;
 	SpawnTicket = 1;
 	ActionLoad(Player, CSmMode::EActionSlot::Slot_A, NullId);
 	ActionBind(Player, CSmMode::EActionSlot::Slot_A, CSmMode::EActionInput::None);
 	declare PrimaryWeapon for Player = 0;
 	PrimaryWeapon = 0;
+	declare UI <=> UIManager.GetUI(Player);
 	if (UI != Null) 
 	{ 
 		declare netwrite Integer[Text] Net_PrimaryWeapons for UI;
@@ -339,7 +321,7 @@ foreach (Player in AllPlayers)
 {
 	declare UI <=> UIManager.GetUI(Player);
 	if (UI == Null) continue;
-	
+	Layers::Attach("HUD", Player);
 	if (Player.RequestsSpectate) 
 	{
 		declare SpawnTicket for Player = 0;
@@ -364,29 +346,11 @@ Layers::Update("ProgressBar", UpdateLayerProgressBar());
 Layers::Attach("ProgressBar");
 Layers::Attach("Markers");
 Layers::Update("HUD", UpdateLayerHUD());
-Layers::Attach("HUD");
 UpdateMarker();
+ST::UpdateST(1, MB_SectionRoundNb, G_MapPointsLimit, S_FinalRoundExceptDraw);
 //MB_Log("G_Capturable = "^G_Capturable);
 
 SC_SetRoundTimer(G_RoundTime);
-***
-
-***OnPlayerAdded***
-***
-declare UI <=> UIManager.GetUI(Player);
-if (UI != Null) 
-{
-	UI.SpectatorForcedClan		= Player.CurrentClan;
-	UI.SpectatorForceCameraType	= 1;
-	declare CurrentCapGoals for Player.Score = 0;
-	declare CurrentMVP for Player.Score = 0;
-	declare netwrite Net_PrimWpn for UI = 0;
-	Net_PrimWpn = 0;
-	declare netwrite Net_SecWpn for UI = 0;
-	Net_SecWpn = 0;
-	declare netwrite Net_Cash for UI = S_StartCash;
-	Net_Cash = S_StartCash;
-}
 ***
 
 ***OnNewSpectator***
@@ -395,7 +359,7 @@ declare UI <=> UIManager.GetUI(Spectator);
 if (UI != Null) {
 	UI.SpectatorForcedClan		= -1;
 	UI.SpectatorForceCameraType	= -1;
-	Layers::Detach("Shop", Spectator);
+	//Layers::Detach("Shop", Spectator);
 }
 declare SpawnTicket for Spectator = 0;
 SpawnTicket = 0;
@@ -404,6 +368,49 @@ SpawnTicket = 0;
 ***Yield***
 ***
 Message::Loop();
+
+foreach (Event in PendingEvents) 
+{
+	if(Event.Type == CSmModeEvent::EType::OnPlayerAdded)
+	{
+		if(Event.Player == Null) Discard(Event);
+			
+		/*declare Kicked = False;
+
+		if(Rank::GetUserRank(Event.Player.User) < S_MinimumTierToPlay) Kicked = Admin_KickUser(Event.Player.User, TextLib::Compose(_("You need to have %1 or better to play on this server."), Rank::GetLevelName(S_MinimumTierToPlay)));
+		if(Rank::GetUserRank(Event.Player.User) > S_MaximumTierToPlay) Kicked = Admin_KickUser(Event.Player.User, TextLib::Compose(_("Players with higher rank than %1 can't play on this server."), Rank::GetLevelName(S_MaximumTierToPlay)));
+*/
+		declare UI <=> UIManager.GetUI(Event.Player);
+		if (UI != Null) 
+		{
+			UI.SpectatorForcedClan		= Event.Player.CurrentClan;
+			UI.SpectatorForceCameraType	= 1;
+			declare CurrentAcc for Event.Player.Score = 0;
+			CurrentAcc = 0;
+			declare Fired for Event.Player.Score = 0;
+			Fired = 0;
+			declare Hits for Event.Player.Score = 0;
+			Hits = 0;
+			declare CurrentKills for Event.Player.Score = 0;
+			CurrentKills = 0;
+			declare CurrentDeaths for Event.Player.Score = 0;
+			CurrentDeaths = 0;
+			declare CurrentCapGoals for Event.Player.Score = 0;
+			CurrentCapGoals = 0;
+			declare CurrentMVP for Event.Player.Score = 0;
+			CurrentMVP = 0;
+			declare StartAtRound for Event.Player.Score = 0;
+			StartAtRound = MB_SectionRoundNb;
+			declare netwrite Net_PrimWpn for UI = 0;
+			Net_PrimWpn = 0;
+			declare netwrite Net_SecWpn for UI = 0;
+			Net_SecWpn = 0;
+			declare netwrite Net_RoundRewards for UI = 0;
+			Net_RoundRewards = 0;
+		}
+		PassOn(Event);
+	}
+}		
 ***
 
 ***PlayLoop***
@@ -411,35 +418,20 @@ Message::Loop();
 declare PlayerCountA = [1 => 0, 2 => 0];
 declare PlayerCountB = [1 => 0, 2 => 0];
 declare PlayerCountC = [1 => 0, 2 => 0];
-
-if(G_LastSettingsUpdate + 1500 < Now)
+if(G_LastSettingsUpdate + 2000 < Now)
 {
 	G_LastSettingsUpdate = Now;
+
+	ST::UpdateST(1, MB_SectionRoundNb, G_MapPointsLimit, S_FinalRoundExceptDraw);
 
 	if(S_RoundTime < 20) G_RoundTime = 20;
 	else G_RoundTime = S_RoundTime;
 
-	if(S_PoleCaptureDuration < 1) G_PoleCaptureDuration = 1;
+	if(S_PoleCaptureDuration < 2) G_PoleCaptureDuration = 2;
 	else G_PoleCaptureDuration = S_PoleCaptureDuration;
 
-	if(S_MapPointsLimit < 1)
-	{
-		G_MapPointsLimit = 1;
-		UpdateFooter();
-	}	
-	else
-	{
-		G_MapPointsLimit = S_MapPointsLimit;
-		UpdateFooter();
-	}
-	
-	if(S_BlueBot < 0) G_BlueBot = 0;
-	else G_BlueBot = S_BlueBot;
-
-	if(S_RedBot < 0) G_RedBot = 0;
-	else G_RedBot = S_RedBot;
-	
-	Users_SetNbFakeUsers(G_BlueBot, G_RedBot);
+	if(S_MapPointsLimit < 1) G_MapPointsLimit = 1;
+	else G_MapPointsLimit = S_MapPointsLimit;
 	
 	if(PlayersNbTotal < 2) MB_StopRound = True;
 }
@@ -453,12 +445,14 @@ foreach (Player in Players) {
 			UnspawnPlayer(Player);
 			declare HasChangedClan for Player = False;
 			HasChangedClan = True;
+			Layers::Detach("HUD", Player);
 		}
 	}
 	if(!Player.IsFakePlayer && Player.RequestsSpectate)
 	{
 		declare NewSpectator for Player = False;
 		NewSpectator = True;
+		Layers::Detach("HUD", Player);
 	}
 }
 
@@ -495,7 +489,7 @@ if(RoundClanWinner == 0)
 					switch(Player.User.Language)
 					{
 						case "pl": MSG2 = "$9d0Znajdź punkt podatny na atak i go zdobądź by wygrać rundę.";
-						default: MSG2 = "$9d0Locate vulnerable access point and do the overload to win the round.";	
+						default: MSG2 = "$9d0Locate vulnerable Access point and do the overload to win the round.";	
 					} 
 					Message::SendStatusMessage(Player, MSG2, 7000, 0);
 				}	
@@ -510,7 +504,7 @@ if(RoundClanWinner == 0)
 					switch(Player.User.Language)
 					{
 						case "pl": MSG2 = "$9d0Broń punktu podatnego na ataki do końca trwania rundy.";
-						default: MSG2 = "$9d0Protect vulnerable access point to end of the round.";	
+						default: MSG2 = "$9d0Protect vulnerable Access point to end of the round.";	
 					} 
 					Message::SendStatusMessage(Player, MSG2, 7000, 0);
 				}	
@@ -527,7 +521,7 @@ if(RoundClanWinner == 0)
 					switch(Player.User.Language)
 					{
 						case "pl": MSG2 = "$9d0Znajdź punkt podatny na atak i go zdobądź by wygrać rundę.";
-						default: MSG2 = "$9d0Locate vulnerable access point and do the overload to win the round.";	
+						default: MSG2 = "$9d0Locate vulnerable Access point and do the overload to win the round.";	
 					} 
 					Message::SendStatusMessage(Player, MSG2, 7000, 0);
 				}	
@@ -540,7 +534,7 @@ if(RoundClanWinner == 0)
 					switch(Player.User.Language)
 					{
 						case "pl": MSG2 = "$9d0Broń punktu podatnego na ataki do końca trwania rundy.";
-						default: MSG2 = "$9d0Protect vulnerable access point to end of the round.";	
+						default: MSG2 = "$9d0Protect vulnerable Access point to end of the round.";	
 					} 
 					Message::SendStatusMessage(Player, MSG2, 7000, 0);
 				}	
@@ -616,13 +610,8 @@ foreach (LandmarkGauge in MapLandmarks_Gauge)
 		if(LandmarkGauge.Tag == "Server A" && G_Capturable == 1)
 		{
 			// Capturing
-			if (PlayerCountA[G_AttackingClan] > 0 && !LandmarkGauge.Gauge.Captured) LandmarkGauge.Gauge.Speed = 1;
-			else if(PlayerCountA[3-G_AttackingClan] > 0 && !LandmarkGauge.Gauge.Captured) LandmarkGauge.Gauge.Speed = 0;
-			else
-			{
-				LandmarkGauge.Gauge.ValueReal = 0.;
-				LandmarkGauge.Gauge.Speed = 0;
-			}	
+			if (PlayerCountA[G_AttackingClan] > PlayerCountA[3-G_AttackingClan] && !LandmarkGauge.Gauge.Captured) LandmarkGauge.Gauge.Speed = PlayerCountA[G_AttackingClan];
+			else LandmarkGauge.Gauge.Speed = 0;
 			// Captured
 			if (LandmarkGauge.Gauge.Value >= LandmarkGauge.Gauge.Max) 
 			{
@@ -633,13 +622,8 @@ foreach (LandmarkGauge in MapLandmarks_Gauge)
 		if(LandmarkGauge.Tag == "Server B" && G_Capturable == 2)
 		{
 			// Capturing
-			if (PlayerCountB[G_AttackingClan] > 0 && !LandmarkGauge.Gauge.Captured) LandmarkGauge.Gauge.Speed = 1;
-			else if(PlayerCountB[3-G_AttackingClan] > 0 && !LandmarkGauge.Gauge.Captured) LandmarkGauge.Gauge.Speed = 0;
-			else
-			{
-				LandmarkGauge.Gauge.ValueReal = 0.;
-				LandmarkGauge.Gauge.Speed = 0;
-			}
+			if (PlayerCountB[G_AttackingClan] > PlayerCountB[3-G_AttackingClan] && !LandmarkGauge.Gauge.Captured) LandmarkGauge.Gauge.Speed = PlayerCountB[G_AttackingClan];
+			else LandmarkGauge.Gauge.Speed = 0;
 			// Captured
 			if (LandmarkGauge.Gauge.Value >= LandmarkGauge.Gauge.Max) 
 			{
@@ -650,13 +634,8 @@ foreach (LandmarkGauge in MapLandmarks_Gauge)
 		if(LandmarkGauge.Tag == "Server C" && G_Capturable == 3)
 		{
 			// Capturing
-			if (PlayerCountC[G_AttackingClan] > 0 && !LandmarkGauge.Gauge.Captured) LandmarkGauge.Gauge.Speed = 1;
-			else if(PlayerCountC[3-G_AttackingClan] > 0 && !LandmarkGauge.Gauge.Captured) LandmarkGauge.Gauge.Speed = 0;
-			else
-			{
-				LandmarkGauge.Gauge.ValueReal = 0.;
-				LandmarkGauge.Gauge.Speed = 0;
-			}
+			if (PlayerCountC[G_AttackingClan] > PlayerCountC[3-G_AttackingClan] && !LandmarkGauge.Gauge.Captured) LandmarkGauge.Gauge.Speed = PlayerCountC[G_AttackingClan];
+			else LandmarkGauge.Gauge.Speed = 0;
 			// Captured
 			if (LandmarkGauge.Gauge.Value >= LandmarkGauge.Gauge.Max) 
 			{
@@ -670,13 +649,24 @@ foreach (LandmarkGauge in MapLandmarks_Gauge)
 if(G_LastProgressUpdate + 1000 < Now)
 {
 	G_LastProgressUpdate = Now;
-	Layers::Update("HUD", UpdateLayerHUD());
+	//Layers::Update("HUD", UpdateLayerHUD());
 
 	G_PlayersAlive = [1 => 0, 2 => 0];
 	
 	foreach(Player in Players)
 	{
 		if(Player.Armor > 0 && Player.CurrentClan > 0) G_PlayersAlive[Player.CurrentClan] += 1;
+		// Read or Init player statistics
+		declare Fired for Player.Score = 0;
+		declare Hits for Player.Score = 0;
+		declare CurrentAcc for Player.Score = 0;
+		if(Fired > 0) CurrentAcc = 100 * Hits / Fired;
+		else CurrentAcc = 0;
+		if(CurrentAcc > 100) CurrentAcc = MathLib::Rand(91, 98);
+		if(CurrentAcc < 0) CurrentAcc = MathLib::Rand(91, 98);
+		declare UI <=> UIManager.GetUI(Player);
+		if(UI == Null) continue;
+		if(!(Layers::IsMissing("Shop", Player))) Layers::Detach("Shop", Player);
 	}	
 	if(G_PlayersAlive[G_AttackingClan] <= 0)
 	{
@@ -689,6 +679,14 @@ if(G_LastProgressUpdate + 1000 < Now)
 	{
 		Announce += 1;
 		Message::SendBigMessage(TextLib::Compose(_("All defenders eliminated, capture the goal!")), 10000, 0, CUIConfig::EUISound::PhaseChange, 0);
+		// Init spectator mode
+		foreach (Player in AllPlayers) 
+		{
+			declare UI <=> UIManager.GetUI(Player);
+			if (UI == Null) continue;
+			UI.SpectatorForceCameraType = -1;
+			UI.SpectatorForcedClan = -1;
+		}	
 	}
 }
 
@@ -697,15 +695,24 @@ foreach (Event in PendingEvents)
 {
 	switch(Event.Type)
 	{
+		case CSmModeEvent::EType::OnShoot:
+		{
+			if(Event.Shooter != Null)
+			{
+				declare Fired for Event.Shooter.Score = 0;
+				Fired += 1;
+			}
+			else Discard(Event);
+		}
 		// Weapon switch via mouse scroll
 		case CSmModeEvent::EType::OnPlayerRequestActionChange: 
 		{
-			if (Event.Player == Null) Discard(Event);
-			else 
+			if (Event.Player != Null) 
 			{
 				SC_CycleWeapon(Event.Player, Event.ActionChange);
 				PassOn(Event);
 			}
+			else Discard(Event);
 		}
 		// On near miss
 		case CSmModeEvent::EType::OnNearMiss:
@@ -714,131 +721,139 @@ foreach (Event in PendingEvents)
 		}
 		case CSmModeEvent::EType::OnActionEvent:
 		{
-			if (Event.Player == Null) Discard(Event);
-			else 
+			if (Event.Player != Null)
 			{
 				SC_SwitchWeapon(Event.Player, Event.ActionInput);
 				PassOn(Event);
 			}
+			else Discard(Event);
 		}
 		case CSmModeEvent::EType::OnArmorEmpty:
 		{
-			if(Event.Victim == Null) Discard(Event);
-
-			if (Event.Victim.Armor > 100)
+			if(Event.Victim != Null && Event.Shooter != Null)
 			{
-				declare SpawnTicket for Event.Victim = 0;
-				SpawnTicket = 1;
-			}
-			else
-			{
-				declare SpawnTicket for Event.Victim = 0;
-				SpawnTicket = 0;
-				declare SUI <=> UIManager.GetUI(Event.Shooter);
-				if (SUI != Null)
+				if (Event.Victim.Armor > 100)
 				{
-					declare netwrite Net_Cash for SUI = S_StartCash;
-					Net_Cash += C_CashForKill;
-				}	
-				//Remove eq that player bought
-				ActionBind(Event.Victim, CSmMode::EActionSlot::Slot_A, CSmMode::EActionInput::None);
-				SetPlayerAmmoMax(Event.Victim, CSmMode::EWeapon::Laser, 0);
-				SetPlayerAmmoMax(Event.Victim, CSmMode::EWeapon::Nucleus, 0);
-				declare UI <=> UIManager.GetUI(Event.Victim);
-				if (UI != Null) 
-				{
-					declare netwrite Net_PrimWpn for UI = 0;
-					Net_PrimWpn = 0;
-					declare netwrite Net_SecWpn for UI = 0;
-					Net_SecWpn = 0;
-					declare netwrite Net_Bought for UI = [False, False, False, False, False, False, False, False, False, False, False];
-					Net_Bought = [False, False, False, False, False, False, False, False, False, False, False];
+					declare SpawnTicket for Event.Victim = 0;
+					SpawnTicket = 1;
 				}
-				foreach(Player in Players)
+				else
 				{
-					declare UI <=> UIManager.GetUI(Player);
+					Layers::Detach("HUD", Event.Victim);
+					declare SpawnTicket for Event.Victim = 0;
+					SpawnTicket = 0;
+					declare CurrentKills for Event.Shooter.Score = 0;
+					CurrentKills += 1;
+					declare CurrentDeaths for Event.Victim.Score = 0;
+					CurrentDeaths += 1;
+					declare SUI <=> UIManager.GetUI(Event.Shooter);
+					if (SUI != Null)
+					{
+						declare netwrite Net_RoundRewards for SUI = 0;
+						Net_RoundRewards += C_CashForKill;
+					}
+					declare UI <=> UIManager.GetUI(Event.Victim);
 					if (UI != Null) 
 					{
-						declare netwrite Integer[Text] Net_PrimaryWeapons for UI;
-						Net_PrimaryWeapons[Event.Victim.Login] = 0;
+						declare netwrite Net_ServerWantReset for UI = False;
+						Net_ServerWantReset = True;
 					}
-				}
+					foreach(Player in Players)
+					{
+						declare UI <=> UIManager.GetUI(Player);
+						if (UI != Null) 
+						{
+							declare netwrite Integer[Text] Net_PrimaryWeapons for UI;
+							Net_PrimaryWeapons[Event.Victim.Login] = 0;
+						}
+					}
 			
-				if (G_PlayersAlive[Event.Victim.CurrentClan] > 1) 
-				{
-					declare PLeft = G_PlayersAlive[Event.Victim.CurrentClan]-1;
-					if (PLeft <= 3) SC_AnnounceEliminationMessage(Event.Victim.CurrentClan-1, PLeft);
-				}
-			}	
-			XmlRpc::OnArmorEmpty(Event);
-			PassOn(Event);
+					if (G_PlayersAlive[Event.Victim.CurrentClan] > 1) 
+					{
+						declare PLeft = G_PlayersAlive[Event.Victim.CurrentClan]-1;
+						if (PLeft <= 3) SC_AnnounceEliminationMessage(Event.Victim.CurrentClan-1, PLeft);
+					}
+				}	
+				XmlRpc::OnArmorEmpty(Event);
+				PassOn(Event);
+			}
+			else Discard(Event);	
 		}
 		case CSmModeEvent::EType::OnHit:
 		{
-			if(Event.Victim == Null || Event.Shooter == Null) Discard(Event);
-
-			// Discard friendly fire
-			if (Event.Shooter != Null && Event.Shooter.CurrentClan == Event.Victim.CurrentClan) Discard(Event);
-			else 
+			if(Event.Victim != Null && Event.Shooter != Null)
 			{
-				if(Event.WeaponNum == GetWeaponNum(CSmMode::EWeapon::Laser))
+				// Discard friendly fire
+				if (Event.Shooter.CurrentClan == Event.Victim.CurrentClan) Discard(Event);
+				else 
 				{
-					// Get distance
-					declare Distance = MathLib::Distance(Event.Shooter.Position, Event.Victim.Position);
-					SC_AnnounceHitDistance(Distance, Event.Shooter);
-				}		
-				if (Event.Shooter != Event.Victim)
-				{
-					declare UI <=> UIManager.GetUI(Event.Shooter);
-					if (UI != Null) 
+					if(Event.WeaponNum == GetWeaponNum(CSmMode::EWeapon::Laser))
 					{
-						declare netwrite Net_Cash for UI = S_StartCash;
-						Score::AddPoints(Event.Shooter, Event.Damage/100);
-						Net_Cash += C_CashForHit;
-						---HeadshotFunctions---
-						---AnnounceHeadshot---
-					}
-					if(Event.Victim.Armor - Event.Damage <= 0)
-					{
-						declare SpawnTicket for Event.Victim = 0;
-						SpawnTicket = 0;
+						// Get distance
+						declare Distance = MathLib::Distance(Event.Shooter.Position, Event.Victim.Position);
+						SC_AnnounceHitDistance(Distance, Event.Shooter);
 					}		
-				}	
-				XmlRpc::OnHit(Event);
-				PassOn(Event);
+					if (Event.Shooter != Event.Victim)
+					{
+						declare Hits for Event.Shooter.Score = 0;
+						Hits += 1;
+						declare UI <=> UIManager.GetUI(Event.Shooter);
+						if (UI != Null) 
+						{
+							declare netwrite Net_RoundRewards for UI = 0;
+							Score::AddPoints(Event.Shooter, Event.Damage/100);
+							Net_RoundRewards += C_CashForHit;
+							---HeadshotFunctions---
+							---AnnounceHeadshot---
+						}
+						if(Event.Victim.Armor - Event.Damage <= 0)
+						{
+							declare SpawnTicket for Event.Victim = 0;
+							SpawnTicket = 0;
+						}		
+					}	
+					XmlRpc::OnHit(Event);
+					PassOn(Event);
+				}
 			}
+			else Discard(Event);	
 		}
 		case CSmModeEvent::EType::OnActionCustomEvent:
 		{
-			if(Event.Shooter == Null || Event.Victim == Null) Discard(Event);
-			// Discard friendly fire
-			if (Event.Param1 == "damage" && Event.Victim != Null && Event.Shooter != Null && Event.Shooter.CurrentClan == Event.Victim.CurrentClan) Discard(Event);
-			else if(Event.Param1 == "damage" && Event.Victim != Null && Event.Shooter != Null && Event.Victim != Event.Shooter) 
+			if(Event.Victim != Null && Event.Shooter != Null)
 			{
-				declare Damage = TextLib::ToInteger(Event.Param2[0]);
-           		declare Points = Damage / 100;
-				if(Damage < 100)
+				// Discard friendly fire
+				if (Event.Param1 == "damage" && Event.Shooter.CurrentClan == Event.Victim.CurrentClan) Discard(Event);
+				else if(Event.Param1 == "damage" && Event.Victim != Event.Shooter) 
 				{
-					Points = 1;
-					Damage = 100;
-				}	
-				declare UI <=> UIManager.GetUI(Event.Shooter);
-				if (UI != Null) 
-				{
-					declare netwrite Net_Cash for UI = S_StartCash;
-            		Net_Cash += C_CashForHit;
-					---HeadshotFunctions---
-					---ActionMakerAnnounceHeadshot---
-				}
-           	 	RemovePlayerArmor(Event.Victim, Damage, Event.Shooter, Points);
-           	 	Score::AddPoints(Event.Shooter, Points);
-          		if(Event.Victim.Armor - Damage <= 0)
-				{
-					declare SpawnTicket for Event.Victim = 0;
-					SpawnTicket = 0;
-				}	
-            	PassOn(Event);
-       		}  
+					declare Damage = TextLib::ToInteger(Event.Param2[0]);
+           			declare Points = Damage / 100;
+					if(Damage < 100)
+					{
+						Points = 1;
+						Damage = 100;
+					}	
+					declare Hits for Event.Shooter.Score = 0;
+					Hits += 1;
+					declare UI <=> UIManager.GetUI(Event.Shooter);
+					if (UI != Null) 
+					{
+						declare netwrite Net_RoundRewards for UI = 0;
+            			Net_RoundRewards += C_CashForHit;
+						---HeadshotFunctions---
+						---ActionMakerAnnounceHeadshot---
+					}
+           	 		RemovePlayerArmor(Event.Victim, Damage, Event.Shooter, Points);
+           	 		Score::AddPoints(Event.Shooter, Points);
+          			if(Event.Victim.Armor - Damage <= 0)
+					{
+						declare SpawnTicket for Event.Victim = 0;
+						SpawnTicket = 0;
+					}	
+            		PassOn(Event);
+       			}
+			}
+  			else Discard(Event);
 		}
 		case CSmModeEvent::EType::OnPlayerRequestRespawn:
 		{
@@ -846,20 +861,15 @@ foreach (Event in PendingEvents)
 			declare Message = "";
 			declare SpawnTicket for Event.Player = 0;
 			SpawnTicket = 0;
+			declare CurrentDeaths for Event.Player.Score = 0;
+			CurrentDeaths += 1;
+			Layers::Detach("HUD", Event.Player);
 
-			//Remove eq that player bought
-			ActionBind(Event.Player, CSmMode::EActionSlot::Slot_A, CSmMode::EActionInput::None);
-			SetPlayerAmmoMax(Event.Player, CSmMode::EWeapon::Laser, 0);
-			SetPlayerAmmoMax(Event.Player, CSmMode::EWeapon::Nucleus, 0);
 			declare UI <=> UIManager.GetUI(Event.Player);
 			if (UI != Null) 
 			{
-				declare netwrite Net_PrimWpn for UI = 0;
-				Net_PrimWpn = 0;
-				declare netwrite Net_SecWpn for UI = 0;
-				Net_SecWpn = 0;
-				declare netwrite Net_Bought for UI = [False, False, False, False, False, False, False, False, False, False, False];
-				Net_Bought = [False, False, False, False, False, False, False, False, False, False, False];
+				declare netwrite Net_ServerWantReset for UI = False;
+				Net_ServerWantReset = True;
 			}
 			foreach(Player in Players)
 			{
@@ -880,7 +890,7 @@ foreach (Event in PendingEvents)
 			PassOn(Event);
 		}
 		case CSmModeEvent::EType::OnCapture: Discard(Event);
-		default: PassOn(Event);
+		//default: PassOn(Event);
 	}
 }
 ***
@@ -896,17 +906,21 @@ foreach(Player in Players)
 	{
 		BestRoundScore = Player.Score.RoundPoints;
 		MVP = Player;
-	}	
+	}
+	declare UI <=> UIManager.GetUI(Player);
+	if (UI == Null) continue;
+	UI.MarkersXML = "";
+	Layers::Detach("HUD", Player);
 }
 if(MVP != Null && RoundClanWinner != 0)
 {
 	declare CurrentMVP for MVP.Score = 0;
 	CurrentMVP += 1;
-	ST2::SetColValue("ST_MVP", MVP.Score, "$fc0"^TextLib::ToText(CurrentMVP));
-}	
+}
 MB_Sleep(1500);
 SM::UnspawnAllPlayers();
 MB_Sleep(1000);
+ST::UpdateST(1, MB_SectionRoundNb, G_MapPointsLimit, S_FinalRoundExceptDraw);
 UIManager.UIAll.UISequence = CUIConfig::EUISequence::EndRound;
 UIManager.UIAll.MarkersXML = "";
 Victory::RoundEnd();
@@ -917,90 +931,75 @@ if(RoundClanWinner > 0)
 	G_ClansMapPoints[RoundClanWinner] += 1;
 	foreach(Player in Players)
 	{
+		declare Laziness for Player.Score = 0;
+		if(Player.Score.RoundPoints <= 5) Laziness -= 1;
 		declare UI <=> UIManager.GetUI(Player);
 		if(UI == Null) continue;
-		declare netwrite Net_Cash for UI = S_StartCash;
-		if(Player.CurrentClan == RoundClanWinner) Net_Cash += C_CashForWin;
-		else if(Player.CurrentClan == 3-RoundClanWinner) Net_Cash += C_CashForLoss;
+		declare netwrite Net_RoundRewards for UI = 0;
+		if(Player.CurrentClan == RoundClanWinner) Net_RoundRewards += C_CashForWin;
+		else if(Player.CurrentClan == 3-RoundClanWinner) Net_RoundRewards += C_CashForLoss;
 	}
 }	
 Message::CleanAllMessages();
-Layers::Detach("HUD");
-if(MB_SectionRoundNb % 3 == 0) DisplayNotice();
 SC_UpdateHeader(G_ClansMapPoints[1], G_ClansMapPoints[2]);
 SC_AnnounceRoundWin(RoundClanWinner);
+if(RoundClanWinner > 0 && MVP != Null) Message::SendStatusMessage(TextLib::Compose(_("$fc0MVP:$g $<%1$>"), MVP.Name), 6500, 0, CUIConfig::EUISound::Silence, 1);
 UIManager.UIAll.ScoreTableVisibility = CUIConfig::EVisibility::ForcedVisible;
 MB_Sleep(4000);
 Score::RoundEnd();
-if(G_ClansMapPoints[1] >= G_MapPointsLimit)
+if(MB_SectionRoundNb == G_MapPointsLimit*2)
+{
+	if(G_ClansMapPoints[1] > G_ClansMapPoints[2])
+	{
+		ClanMapWinner = 1;
+		MB_StopMap = True;
+	}
+	else if(G_ClansMapPoints[2] > G_ClansMapPoints[1])
+	{
+		ClanMapWinner = 2;
+		MB_StopMap = True;
+	}
+	else
+	{
+		if(!S_FinalRoundExceptDraw)
+		{
+			ClanMapWinner = 0;
+			MB_StopMap = True;
+		}
+		else
+		{
+			G_MapPointsLimit = G_ClansMapPoints[1]+1;
+		}
+	}
+}
+if(G_ClansMapPoints[1] > G_MapPointsLimit)
 {
 	ClanMapWinner = 1;
 	MB_StopMap = True;
 }
-else if(G_ClansMapPoints[2] >= G_MapPointsLimit)
+else if(G_ClansMapPoints[2] > G_MapPointsLimit)
 {
 	ClanMapWinner = 2;
 	MB_StopMap = True;
 }
-MB_Sleep(4000);
+if(MB_SectionRoundNb == G_MapPointsLimit)
+{
+	G_AttackingClan = 3 - G_AttackingClan;
+	---AnnounceHalfTime---
+}
+else if(MB_SectionRoundNb == G_MapPointsLimit*2 && S_FinalRoundExceptDraw && ClanMapWinner == 0)
+{
+	G_AttackingClan = 3 - G_AttackingClan;
+	---AnnounceFinalRound---
+}
+MB_Sleep(5000);
 UIManager.UIAll.ScoreTableVisibility = CUIConfig::EVisibility::Normal;
 Message::CleanAllMessages();
 if(PlayersNbTotal < 2) SC_WaitForPlayers();
-//Switch the roles
-G_AttackingClan = 3 - G_AttackingClan;
 ***
 
 ***EndMap***
 ***
-/*foreach (Score in Scores) 
-{
-	declare PrevPoints for Score = 0;
-	PrevPoints = Score.Points;
-	declare CurrentMVP for Score = 0;
-	Score.LadderMatchScoreValue = MathLib::ToReal(Score.Points + (CurrentMVP*2));
-	// Winner
-	if (Score.LadderClan == ClanMapWinner) {
-		Score.Points = 4;
-	}
-	// Looser
-	else if (Score.LadderClan == 3 - ClanMapWinner) {
-		Score.Points = 2;
-	}
-	// Other
-	else {
-		Score.Points = 0;
-		Score.LadderMatchScoreValue = 0.;
-	}
-}
-Ladder_SetResultsVersion(1);
-Score::MatchEnd(True);
-foreach (Score in Scores) {
-	declare PrevPoints for Score = 0;
-	Score.Points = PrevPoints;
-}*/
-
-foreach (Player in Players) {
-	if(Player.CurrentClan == ClanMapWinner && Player.Score != Null) {
-		declare LadderBonus for Player.Score = 0;
-		declare CurrentMVP for Player.Score = 0;
-		LadderBonus += CurrentMVP*6;
-	}
-	else if(Player.CurrentClan != ClanMapWinner && Player.Score != Null) {
-		declare LadderBonus for Player.Score = 0;
-		declare CurrentMVP for Player.Score = 0;
-		LadderBonus -= 30 - (CurrentMVP*3);
-	}
-}
-foreach (Score in Scores) {
-	declare LadderBonus for Score = 0;
-	Score.Points += LadderBonus;
-}
-Score::MatchEnd();
-foreach (Score in Scores) {
-	declare LadderBonus for Score = 0;
-	Score.Points -= LadderBonus;
-	//Score.RoundPoints = LadderBonus;
-}
 Victory::MatchEnd();
 Message::SendStatusMessage(TextLib::Compose(_("Map result: %1 %2 - %3 %4"),Teams[0].ColorizedName,TextLib::ToText(G_ClansMapPoints[1]),TextLib::ToText(G_ClansMapPoints[2]),Teams[1].ColorizedName), 6000, 0, CUIConfig::EUISound::EndRound, 0);
 if (ClanMapWinner > 0) Message::SendBigMessage(TextLib::Compose(_("%1 wins the map!"), Teams[ClanMapWinner - 1].ColorizedName), 6000, 0);
@@ -1008,13 +1007,65 @@ else Message::SendBigMessage(TextLib::Compose(_("|Match|Draw")), 6000, 0, CUICon
 UIManager.UIAll.ScoreTableVisibility = CUIConfig::EVisibility::ForcedVisible;
 MB_Sleep(6000);
 UIManager.UIAll.UISequence = CUIConfig::EUISequence::Podium;
+Rank::EndMap(MB_SectionRoundNb, G_ClansMapPoints[1], G_ClansMapPoints[2]);
+ST::UpdateST(2, MB_SectionRoundNb, G_MapPointsLimit, S_FinalRoundExceptDraw);
 MB_Sleep(6000);
+foreach(Player in AllPlayers)
+{
+	declare UI <=> UIManager.GetUI(Player);
+	if (UI != Null) 
+	{
+		declare Fired for Player.Score = 0;
+		declare Hits for Player.Score = 0;
+		declare CurrentKills for Player.Score = 0;
+		declare CurrentDeaths for Player.Score = 0;
+		declare CurrentCapGoals for Player.Score = 0;
+		// Collect data to stats page if server is ranked
+		if(Rank::IsServerRanked(False) && PlayersNbTotal >= 4)
+		{
+			declare persistent Overload_AllKills 		for Player.User = 0;
+			declare persistent Overload_AllDeaths 		for Player.User = 0;
+			declare persistent Overload_AllFired 		for Player.User = 0;
+			declare persistent Overload_AllHits		 	for Player.User = 0;
+			declare persistent Overload_AllGoals 		for Player.User = 0;
+			declare persistent Overload_MapsPlayed 		for Player.User = 0;
+			Overload_AllKills += CurrentKills;
+			Overload_AllDeaths += CurrentDeaths;
+			Overload_AllFired += Fired;
+			Overload_AllHits += Hits;
+			Overload_AllGoals += CurrentCapGoals;
+			Overload_MapsPlayed += 1;
+		}
+		declare CurrentAcc for Player.Score = 0;
+		CurrentAcc = 0;
+		Fired = 0;
+		Hits = 0;
+		CurrentKills = 0;
+		CurrentDeaths = 0;
+		CurrentCapGoals = 0;
+		declare CurrentMVP for Player.Score = 0;
+		CurrentMVP = 0;
+		declare StartAtRound for Player.Score = 0;
+		StartAtRound = 0;
+		declare netwrite Net_PrimWpn for UI = 0;
+		Net_PrimWpn = 0;
+		declare netwrite Net_SecWpn for UI = 0;
+		Net_SecWpn = 0;
+		declare netwrite Net_RoundRewards for UI = 0;
+		Net_RoundRewards = 0;
+	}
+}
 UIManager.UIAll.ScoreTableVisibility = CUIConfig::EVisibility::Normal;
+ST::Unload();
+Rank::Detach();
 Message::CleanAllMessages();
+SC_VoteForNextMap();
 ***
 
 ***EndServer***
 ***
+ST::Unload();
+Rank::Unload();
 Layers::Destroy("ProgressBar");
 Layers::Destroy("RulesReminder");
 Layers::Destroy("HUD");
@@ -1105,77 +1156,6 @@ Void UpdateBasesColors() {
 	}
 }
 
-Void DisplayNotice()
-{
-	foreach (Player in Players) 
-	{
-		declare UI <=> UIManager.GetUI(Player);
-		if (UI == Null) continue;
-		declare rand = MathLib::Rand(1,6);
-		
-		declare Text[Integer] MSG;
-		declare Prefix = "$f90$s>>";
-		switch(Player.User.Language)
-		{
-			case "pl":
-			{
-				MSG[1] = "Śledź maniaflash $h[maniaflash?overload]overload$h by uzyskać informacje o aktualizacjach";
-				MSG[2] = "Tryb został stworzony przez ToRRent'a";
-				MSG[3] = "Wciśnij F8 by zmodyfikować interfejs";
-				MSG[4] = "Drużyny co rundę zmieniają się rolami, jedni atakują, drudzy bronią.";
-				MSG[5] = "Jeżeli masz sugestie co do rozwoju trybu, napisz $l[http://forum.maniaplanet.com/viewtopic.php?f=10&t=28177&start=0]tutaj$l";
-				MSG[6] = "Tylko obrońcy więdzą, który punkt jest podatny na atak.";
-			}
-			case "fr": 
-			{
-				MSG[1] = "Abonne-toi au Maniaflash $h[maniaflash?overload]overload$h pour avoir les informations concernant les mises-à-jour et les rendez-vous";
-				MSG[2] = "Mode de jeu créé par ToRRent";
-				MSG[3] = "Appuie sur F8 pour personnaliser l'interface";
-				MSG[4] = "Teams are switching roles every round, One is attacking, another defending";
-				MSG[5] = "Pour toute suggestion concernant le mode de jeu, merci d'aller $l[http://forum.maniaplanet.com/viewtopic.php?f=10&t=28177&start=0]ici$l";
-				MSG[6] = "Only defenders know, which access point is vulnerable.";
-			}
-			case "it": 
-			{
-				MSG[1] = "Segui maniaflash $h[maniaflash?overload]overload$h per ot tenere le informazioni sul tema di aggiornamenti e riunioni";
-				MSG[2] = "Il modo è stato creato grazie a ToRRent'a";
-				MSG[3] = "Digiti F8 per modificare l’interfaccia";
-				MSG[4] = "Teams are switching roles every round, One is attacking, another defending";
-				MSG[5] = "Se hai suggestioni rispetti allo sviluppo del modo, scrivi $l[http://forum.maniaplanet.com/viewtopic.php?f=10&t=28177&start=0]qui$l";
-				MSG[6] = "Only defenders know, which access point is vulnerable.";
-			}
-			case "de": 
-			{
-				MSG[1] = "Abonniere den ManiaFlash $h[maniaflash?overload]overload$h um Informationen über Aktualisierungen und Treffen zu erhalten";
-				MSG[2] = "Spielmodus erstellt durch ToRRent";
-				MSG[3] = "Drücke F8 um die Oberfläche anzupassen";
-				MSG[4] = "Teams are switching roles every round, One is attacking, another defending";
-				MSG[5] = "Verbesserungsvorschläge bitte $l[http://forum.maniaplanet.com/viewtopic.php?f=10&t=28177&start=0]hier$l";
-				MSG[6] = "Only defenders know, which access point is vulnerable.";
-			}
-			default:
-			{
-				MSG[1] = "Follow maniaflash $h[maniaflash?overload]overload$h to get informations about updates and meetings";
-				MSG[2] = "Game mode was created by ToRRent";
-				MSG[3] = "Press F8 to customize interface";
-				MSG[4] = "Teams are switching roles every round, One is attacking, another defending";
-				MSG[5] = "If you have suggestion about gamemode, go $l[http://forum.maniaplanet.com/viewtopic.php?f=10&t=28177&start=0]here$l";
-				MSG[6] = "Only defenders know, which access point is vulnerable.";
-			}
-		}
-
-		switch(rand)
-		{
-			case 1: UI.SendChat(Prefix^MSG[1]);
-			case 2: UI.SendChat(Prefix^MSG[2]);
-			case 3: UI.SendChat(Prefix^MSG[3]);
-			case 4: UI.SendChat(Prefix^MSG[4]);
-			case 5: UI.SendChat(Prefix^MSG[5]);
-			case 6: UI.SendChat(Prefix^MSG[6]);
-		}
-	}	
-}
-
 Text UpdateLayerHUD()
 {
 	return """
@@ -1202,8 +1182,9 @@ main()
 		if(InputPlayer.Armor > 0)
 		{			
 			Frame_Overlay.Visible = True;
-			declare netread Net_Cash for UI = {{{S_StartCash}}};
-			Label_Cash.Value = Net_Cash^"";
+			declare netwrite Net_Cash for UI = {{{S_StartCash}}};
+			declare netread Net_RoundRewards for UI = 0;
+			Label_Cash.Value = Net_Cash+Net_RoundRewards^"";
 			if(InputPlayer.CurrentClan == {{{G_AttackingClan}}}) Label_Role.SetText(_("|Imperative|Attack"));
 			else Label_Role.SetText(_("|Imperative|Defend")); 
 
@@ -1244,7 +1225,6 @@ main()
 
 Void UpdateMarker()
 {
-	UIManager.UIAll.MarkersXML = "";
 	foreach(Player in Players)
 	{
 		declare UI <=> UIManager.GetUI(Player);
@@ -1321,7 +1301,7 @@ Text UpdateLayerRulesReminder() {
 <manialink version="1" name="Overload:Rules Reminder">
 <dico>
    <language id="en">
-    	<rule1>- Map contain 3 access points, only one is vulnerable.</rule1>
+    	<rule1>- Map contain 3 Access points, only one is vulnerable.</rule1>
     	<rule2>$f70Attackers:$g Locate vulnerable point and capture to do overload.</rule2>
     	<rule3>$f70Defenders:$g Protect vulnerable point to end of the round.</rule3>
     	<rule4>- Before round, you can buy equipment in the shop.</rule4>
@@ -1344,10 +1324,6 @@ Text UpdateLayerRulesReminder() {
 </frame>
 <script><!--
 	while(InputPlayer == Null) yield;
-	
-	if(InputPlayer.User.LadderPoints > 3000) {
-		return;
-	}
 
 	declare RulesReminderMainFrame 	<=> (Page.GetFirstChild("RulesReminderMainFrame") as CMlFrame);
 	
@@ -1383,8 +1359,9 @@ Text UpdateLayerProgressBar()
       <label0>Loading data...</label0>
       <label1>Hacking...</label1>
       <label2>Wrong point, check another one.</label2>
-      <label3>It's safe, protect vulnerable access point.</label3>
-	  <label4>Protect this access point.</label4>
+      <label3>It's safe, protect vulnerable Access point.</label3>
+	  <label4>Protect this Access point.</label4>
+	  <label5>Blocked...</label5>
    </language>
    <language id="pl">
       <label0>Ładowanie...</label0>
@@ -1392,6 +1369,7 @@ Text UpdateLayerProgressBar()
       <label2>Zły punkt, znajdź podatny na atak.</label2>
       <label3>Ten punkt jest bezpieczny, chroń punkt podatny na ataki.</label3>
 	  <label4>Broń tego punktu przed atakami.</label4>
+	  <label5>Sporne...</label5>
    </language>
 </dico>
 	<frame class="LibCustomUI_Module" id="Overload_GaugeCapture">
@@ -1402,6 +1380,7 @@ Text UpdateLayerProgressBar()
 			<label posn="0 13 3" halign="center" textsize="3" textemboss="1" style="TextCreditsTitle" textid="label2" hidden="1" textprefix="$o" id="Label_Info_2"/>
 			<label posn="0 13 3" halign="center" textsize="3" textemboss="1" style="TextCreditsTitle" textid="label3" hidden="1" textprefix="$o" id="Label_Info_3"/>
 			<label posn="0 13 3" halign="center" textsize="3" textemboss="1" style="TextCreditsTitle" textid="label4" hidden="1" textprefix="$o" id="Label_Info_4"/>
+			<label posn="0 13 3" halign="center" textsize="3" textemboss="1" style="TextCreditsTitle" textid="label5" hidden="1" textprefix="$o" id="Label_Info_5"/>
 			<gauge posn="0 8 2" sizen="124 10.4" halign="center" style="EnergyBar" drawbg="1" drawblockbg="1" id="Gauge_Capture" />
 		</frame>
 	</frame>	
@@ -1414,6 +1393,7 @@ main()
 	declare Label_Info_2	<=> (Page.GetFirstChild("Label_Info_2")		as CMlLabel);
 	declare Label_Info_3	<=> (Page.GetFirstChild("Label_Info_3")		as CMlLabel);
 	declare Label_Info_4	<=> (Page.GetFirstChild("Label_Info_4")		as CMlLabel);
+	declare Label_Info_5	<=> (Page.GetFirstChild("Label_Info_5")		as CMlLabel);
 	declare Label_Goal 		<=> (Page.GetFirstChild("Label_Goal") 		as CMlLabel);
 	declare Gauge_Capture 	<=> (Page.GetFirstChild("Gauge_Capture") 	as CMlGauge);
 	{{{CustomUI::InjectMLInit()}}}
@@ -1429,6 +1409,7 @@ main()
 		Label_Info_2.Hide();
 		Label_Info_3.Hide();	
 		Label_Info_4.Hide();
+		Label_Info_5.Hide();
 		
 		if (InputPlayer.SpawnStatus == CSmPlayer::ESpawnStatus::Spawned && InputPlayer.CapturedLandmark != Null && InputPlayer.CapturedLandmark.Gauge != Null && (InputPlayer.CapturedLandmark.Tag == "Server A" || InputPlayer.CapturedLandmark.Tag == "Server B" || InputPlayer.CapturedLandmark.Tag == "Server C")) 
 		{
@@ -1450,6 +1431,7 @@ main()
 								Label_Info_2.Hide();
 								Label_Info_3.Hide();		
 								Label_Info_4.Show();
+								Label_Info_5.Hide();
 							}
 							else
 							{
@@ -1457,6 +1439,7 @@ main()
 								Label_Info_2.Hide();
 								Label_Info_3.Show();		
 								Label_Info_4.Hide();
+								Label_Info_5.Hide();
 							}
 						}
 						case "Server B":
@@ -1467,6 +1450,7 @@ main()
 								Label_Info_2.Hide();
 								Label_Info_3.Hide();		
 								Label_Info_4.Show();
+								Label_Info_5.Hide();
 							}
 							else
 							{
@@ -1474,6 +1458,7 @@ main()
 								Label_Info_2.Hide();
 								Label_Info_3.Show();		
 								Label_Info_4.Hide();
+								Label_Info_5.Hide();
 							}
 						}
 						case "Server C":
@@ -1484,6 +1469,7 @@ main()
 								Label_Info_2.Hide();
 								Label_Info_3.Hide();		
 								Label_Info_4.Show();
+								Label_Info_5.Hide();
 							}
 							else
 							{
@@ -1491,16 +1477,73 @@ main()
 								Label_Info_2.Hide();
 								Label_Info_3.Show();		
 								Label_Info_4.Hide();
+								Label_Info_5.Hide();
 							}
 						}
 					}
 				}	
 				else
 				{
-					Label_Info_1.Hide();
-					Label_Info_2.Show();
-					Label_Info_3.Hide();		
-					Label_Info_4.Hide();
+					switch(InputPlayer.CapturedLandmark.Tag)
+					{
+						case "Server A":
+						{
+							if({{{G_Capturable}}} == 1)
+							{
+								Label_Info_1.Hide();
+								Label_Info_2.Hide();
+								Label_Info_3.Hide();		
+								Label_Info_4.Hide();
+								Label_Info_5.Show();
+							}
+							else
+							{
+								Label_Info_1.Hide();
+								Label_Info_2.Show();
+								Label_Info_3.Hide();		
+								Label_Info_4.Hide();
+								Label_Info_5.Hide();
+							}
+						}
+						case "Server B":
+						{
+							if({{{G_Capturable}}} == 2)
+							{
+								Label_Info_1.Hide();
+								Label_Info_2.Hide();
+								Label_Info_3.Hide();		
+								Label_Info_4.Hide();
+								Label_Info_5.Show();
+							}
+							else
+							{
+								Label_Info_1.Hide();
+								Label_Info_2.Show();
+								Label_Info_3.Hide();		
+								Label_Info_4.Hide();
+								Label_Info_5.Hide();
+							}
+						}
+						case "Server C":
+						{
+							if({{{G_Capturable}}} == 3)
+							{
+								Label_Info_1.Hide();
+								Label_Info_2.Hide();
+								Label_Info_3.Hide();		
+								Label_Info_4.Hide();
+								Label_Info_5.Show();
+							}
+							else
+							{
+								Label_Info_1.Hide();
+								Label_Info_2.Show();
+								Label_Info_3.Hide();		
+								Label_Info_4.Hide();
+								Label_Info_5.Hide();
+							}
+						}
+					}
 				}
 			}
 			else if(InputPlayer.CapturedLandmark.Gauge.Speed > 1)
@@ -1530,9 +1573,9 @@ Text GetLetterFromNumber(Integer _Number)
 	declare Result = "";
 	switch(_Number)
 	{
-		case 1: Result = "$fa0A";
-		case 2: Result = "$fa0B";
-		case 3: Result = "$fa0C";
+		case 1: Result = "$o$fa0A";
+		case 2: Result = "$o$fa0B";
+		case 3: Result = "$o$fa0C";
 		default: Result = "";
 	}
 	return Result;
@@ -1551,7 +1594,7 @@ Text UpdateLayerCapturable(Integer _Capturable)
    </language>
 </dico>
 <frame posn="0 -75 0" id="Frame_Cap" hidden="1">
-	<label posn="0 2 0" sizen="75 5" halign="center" textid="info" textsize="4" />
+	<label posn="0 2 0" sizen="110 5" halign="center" style="TextTitle3" textid="info" textsize="4" />
 	<label posn="0 -5 0" halign="center" text="{{{GetLetterFromNumber(_Capturable)}}}" textsize="9" />
 </frame>
 <script><!--
@@ -1572,9 +1615,4 @@ main()
 --></script>
 </manialink>
 """;
-}
-
-Void UpdateFooter()
-{
-	SC_UpdateSTFooter(G_MapPointsLimit, G_ClansMapPoints[1], G_ClansMapPoints[2], G_AttackingClan);
 }

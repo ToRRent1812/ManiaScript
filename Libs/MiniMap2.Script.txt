@@ -7,8 +7,8 @@
 // ---------------------------------- //
 // Constants
 // ---------------------------------- //
-#Const C_LibMiniMap2_Pos			<110., -40., 0.>
-#Const C_LibMiniMap2_Size			<48., 48.>
+#Const C_LibMiniMap2_Pos			<113., -35., 0.>
+#Const C_LibMiniMap2_Size			<46., 46.>
 #Const C_LibMiniMap2_Scale			1.
 #Const C_LibMiniMap2_Zoom			2.6
 #Const C_LibMiniMap2_WorldPosition	<0.7, 0.9, 0.>
@@ -18,7 +18,7 @@
 #Const C_LibMiniMap2_MapYawFollow	True
 #Const C_LibMiniMap2_OverlayImage 	"file://Media/Manialinks/Common/Minimap/MinimapOverlay2.dds"
 #Const C_LibMiniMap2_OverlayPos		<-3., 3.>
-#Const C_LibMiniMap2_OverlaySize	<52., 52.>
+#Const C_LibMiniMap2_OverlaySize	<50., 50.>
 
 // ---------------------------------- //
 // Globales

@@ -1,12 +1,17 @@
-#Extends "Modes/Shootmania/ModeBase.Script.txt"
+#Extends "Modes/Shootmania/ModeBase2.Script.txt"
 
+#Include "Libs/Vote.Script.txt" as VoteMap
+#Include "Libs/Rank.Script.txt" as Rank
 #Include "Libs/Nadeo/Sound.Script.txt" as Sound
 #Include "Libs/Nadeo/Message.Script.txt" as Message
 #Include "Libs/Nadeo/Layers2.Script.txt" as Layers
 
-#Setting S_MapPointsLimit		4		as _("Number of rounds to make half-time")
+#Setting S_MapPointsLimit		5		as _("Number of rounds to make half-time")
 #Setting S_ClassSelectionTime	13		as _("Time to choose basic loadout before round")
 #Setting S_FinalRoundExceptDraw	False	as _("Use additional round to determine map winner")
+#Setting S_MapVoteSystem 		True 	as _("Use map vote system")
+/*#Setting S_MinimumTierToPlay 	0 		as "<hidden>"
+#Setting S_MaximumTierToPlay 	19 		as "<hidden>"*/
 
 #Const C_ImgBaseDir				"file://Media/Manialinks/Shootmania/Common/"
 #Const C_ImgModeDir				"file://Media/Manialinks/Shootmania/Common/FireFight"
@@ -56,6 +61,7 @@ while (PreRoundEndTime > Now && !ServerShutdownRequested && !MatchEndRequested)
 	foreach (Player in Players) 
 	{
 		if(Player.IsFakePlayer) G_SecondaryWeapons[Player.Login] = 1;
+		if(Layers::IsMissing("WeaponSelection", Player)) Layers::Attach("WeaponSelection", Player);
 		declare UI <=> UIManager.GetUI(Player);
 		if (UI == Null) continue;
 		// If the player changed clan during the class selection
@@ -80,7 +86,7 @@ foreach (Player in Players)
 	Layers::Detach("WeaponSelection", Player);
 }
 // Sleep a little to let the server receive all the selected classes
-MB_Sleep(2000);
+MB_Sleep(2500);
 Layers::Show("Players");
 ***
 
@@ -115,7 +121,6 @@ Layers::Show("Players");
 	while (ClansNbPlayers[1] < 1 || ClansNbPlayers[2] < 1 && (!ServerShutdownRequested && !MatchEndRequested)) {
 		MB_Yield();
 		LT_SpawnWeaponItems();
-		Users_SetNbFakeUsers(G_BlueBot, G_RedBot);
 		
 		// Let the server sleep if there's no players on it
 		if (PlayersNbTotal <= 0) continue;
@@ -302,7 +307,9 @@ declare stutz = ShootPosi + (gamma*ShootDir);
 
 ***OnNearMiss***
 ***
-if (Event.Shooter == Null || Event.Shooter == Event.Victim) Discard(Event);
+if (Event.Shooter == Null) Discard(Event);
+else if (Event.Victim == Null) Discard(Event);
+else if(Event.Shooter == Event.Victim) Discard(Event);
 else 
 {
 	if (Event.WeaponNum == GetWeaponNum(CSmMode::EWeapon::Laser)) 
@@ -358,6 +365,7 @@ else
 
 ***StartServer***
 ***
+VoteMap::Load();
 Sound::Load();
 Sound::Attach();
 
@@ -407,15 +415,10 @@ Layers::Attach("Players");
 Layers::Hide("Players");
 ***
 
-***OnPlayerAdded***
-***
-Layers::Update("Players", Private_UpdateLayerPlayers());
-***
-
 ***PlayLoop***
 ***
 // Spawn objects
-LT_SpawnWeaponItems();
+LT_SpawnWeaponItems();			
 ***
 
 ***EndRound***
@@ -427,10 +430,25 @@ Layers::Detach("Players");
 ***EndServer***
 ***
 Sound::Unload();
+VoteMap::Unload();
 Layers::Destroy("WeaponSelection");
 Layers::Destroy("Players");
 Layers::Clean();
 ***
+
+Void LT_VoteForNextMap() {
+	if (!S_MapVoteSystem) return;
+	
+	VoteMap::Begin();
+	
+	while (!VoteMap::CanStop()) 
+	{
+		MB_Yield();
+		VoteMap::Loop();
+	}
+	
+	VoteMap::End();
+}
 
 Void LT_PickUpWeapon(CSmPlayer _Player, Text _Weapon) 
 {
@@ -979,12 +997,8 @@ Void UpdatePlayersList() {
 			if (Frame_PlayerArmors != Null && Frame_PlayerArmors.Visible) Frame_PlayerArmors.Visible = False;
 		}
 		
-		if (TotalArmors[ClanNb] > 0) {
-			if (!Labels_ArmorsLeft[ClanNb].Visible) Labels_ArmorsLeft[ClanNb].Visible = True;
-			Labels_ArmorsLeft[ClanNb].Value = TL::ToText(TotalArmors[ClanNb]);
-		} else {
-			if (Labels_ArmorsLeft[ClanNb].Visible) Labels_ArmorsLeft[ClanNb].Visible = False;
-		}
+		if (!Labels_ArmorsLeft[ClanNb].Visible) Labels_ArmorsLeft[ClanNb].Visible = True;
+		Labels_ArmorsLeft[ClanNb].Value = TL::ToText(TotalArmors[ClanNb]);
 	}
 	
 }
@@ -1004,7 +1018,7 @@ main() {
 	{{{CustomUI::InjectMLInit()}}}
 	
 	while (True) {
-		sleep(750);
+		sleep(900);
 		
 		if (!PageIsVisible || InputPlayer == Null) continue;
 		
@@ -1172,7 +1186,8 @@ main()
 }
 
 Void LT_SpawnWeaponItems() {
-	foreach (MapLandmark in MapLandmarks_ObjectAnchor) {
+	foreach (MapLandmark in MapLandmarks_ObjectAnchor) 
+	{
 		declare ObjectAnchor <=> MapLandmark.ObjectAnchor;
 		if (ObjectAnchor == Null) continue;
 		
@@ -1231,22 +1246,13 @@ Void LT_UpdateHeader(Integer _Clan1Points, Integer _Clan2Points)
 	//UIManager.UIAll.ScoreSummary_MatchPoints2	= ClanScores[2];
 }
 
-Void LT_UpdateSTFooter(Integer _Points1, Integer _Points2)
-{
-	declare AllRounds = S_MapPointsLimit*2;
-	if(S_FinalRoundExceptDraw) AllRounds = S_MapPointsLimit*2+1;
-	if(S_FinalRoundExceptDraw && MB_SectionRoundNb == S_MapPointsLimit*2+1) ST2::SetFooterText(TextLib::Compose(_("Final Round")));
-	else ST2::SetFooterText(TextLib::Compose(_("Round: %1/%2 | Points to win: %3 | Remaining rounds: %4"), TextLib::ToText(MB_SectionRoundNb), TextLib::ToText(AllRounds), TextLib::ToText(S_MapPointsLimit+1), TextLib::ToText(S_MapPointsLimit*2-MB_SectionRoundNb)));
-	ModeStatusMessage = TextLib::Compose(_("Round: %1/%2 | Points to win: %3 | Score: %4:%5"), TextLib::ToText(MB_SectionRoundNb), TextLib::ToText(AllRounds), TextLib::ToText(S_MapPointsLimit+1), TextLib::ToText(_Points1), TextLib::ToText(_Points2));
-}
-
 Void LT_AnnounceHitDistance(Real _Distance, CSmPlayer _Player)
 {
 	declare UI <=> UIManager.GetUI(_Player);
 	if(UI == Null) return;
 	declare Distance = MathLib::NearestInteger(_Distance * 10) / 10.0;
 	Message::SendStatusMessage(_Player, TextLib::Compose(_("%1m hit!"), TextLib::ToText(Distance)), 2500, 1);
-	UI.SendNotice(TextLib::Compose(_("%1m hit!"), TextLib::ToText(Distance)), CUIConfig::ENoticeLevel::Default, Null, CUIConfig::EAvatarVariant::Default, CUIConfig::EUISound::Silence, 0);
+	UI.SendNotice(TextLib::Compose(_("%1m hit from Laser!"), TextLib::ToText(Distance)), CUIConfig::ENoticeLevel::Default, Null, CUIConfig::EAvatarVariant::Default, CUIConfig::EUISound::Silence, 0);
 }
 
 Void LT_AnnounceRoundWin(Integer _Winner)
